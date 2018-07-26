@@ -14,7 +14,7 @@
 #include <zircon/syscalls/resource.h>
 
 #include "platform-bus.h"
-#include "platform-proxy.h"
+#include "proxy-protocol.h"
 
 // An overview of platform-device and platform proxy.
 //
@@ -464,7 +464,7 @@ static zx_status_t platform_dev_rxrpc(void* ctx, zx_handle_t channel) {
                                         &handle, &handle_count);
         break;
     case PDEV_GET_INTERRUPT:
-        resp.status = pdev_rpc_get_interrupt(dev, req->index, &resp.irq.irq, &handle,
+        resp.status = pdev_rpc_get_interrupt(dev, req->index, &resp.irq, &handle,
                                              &handle_count);
         break;
     case PDEV_GET_BTI:
