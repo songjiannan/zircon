@@ -9,6 +9,8 @@
 #include <zircon/listnode.h>
 #include <threads.h>
 
+typedef struct pdev_req pdev_req_t;
+
 typedef struct platform_i2c_bus {
     i2c_impl_protocol_t i2c;
     uint32_t bus_id;
@@ -21,3 +23,7 @@ typedef struct platform_i2c_bus {
     thrd_t thread;
     mtx_t lock;
 } platform_i2c_bus_t;
+
+zx_status_t platform_i2c_init(platform_bus_t* bus, i2c_impl_protocol_t* i2c);
+zx_status_t platform_i2c_transact(platform_bus_t* bus, pdev_req_t* req, pbus_i2c_channel_t* channel,
+                                  const void* write_buf, zx_handle_t channel_handle);

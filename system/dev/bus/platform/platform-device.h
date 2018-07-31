@@ -10,7 +10,7 @@
 typedef struct platform_bus platform_bus_t;
 
 // context structure for a platform device
-typedef struct platform_dev {
+typedef struct {
     zx_device_t* zxdev;
     platform_bus_t* bus;
     list_node_t node;

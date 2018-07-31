@@ -20,6 +20,7 @@ MODULE_STATIC_LIBS := \
     system/ulib/ddk \
     system/ulib/fbl \
     system/ulib/sync \
+    system/ulib/zxcpp \
 
 MODULE_LIBS := \
     system/ulib/driver \
