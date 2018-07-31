@@ -12,6 +12,7 @@
 #include <ddktl/protocol/platform-device.h>
 #include <ddktl/protocol/scpi.h>
 #include <ddktl/protocol/usb-mode-switch.h>
+#include <fbl/vector.h>
 #include <lib/zx/channel.h>
 
 #include "proxy-protocol.h"
@@ -27,7 +28,6 @@ class ProxyDevice : public ProxyDeviceType, public ddk::PdevProtocol<ProxyDevice
                     ddk::ScpiProtocol<ProxyDevice>, ddk::UmsProtocol<ProxyDevice> {
 public:
     static zx_status_t Create(zx_device_t* parent, const char* name, zx_handle_t rpc_channel);
-    ~ProxyDevice();
 
     // device protocol implementation
     zx_status_t DdkGetProtocol(uint32_t proto_id, void* out);
@@ -89,10 +89,8 @@ private:
     }
 
     zx::channel rpc_channel_;
-    pbus_mmio_t* mmios_;
-    uint32_t mmio_count_;
-    pbus_irq_t* irqs_;
-    uint32_t irq_count_;
+    fbl::Vector<pbus_mmio_t> mmios_;
+    fbl::Vector<pbus_irq_t> irqs_;
     char name_[ZX_MAX_NAME_LEN];
 };
 

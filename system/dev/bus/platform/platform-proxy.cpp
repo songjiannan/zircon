@@ -330,7 +330,7 @@ zx_status_t ProxyDevice::ClkDisable(uint32_t index) {
 
 zx_status_t ProxyDevice::MapMmio(uint32_t index, uint32_t cache_policy, void** out_vaddr,
                                  size_t* out_size, zx_paddr_t* out_paddr, zx_handle_t* out_handle) {
-    if (index > mmio_count_) {
+    if (index > mmios_.size()) {
         return ZX_ERR_INVALID_ARGS;
     }
 
@@ -380,7 +380,7 @@ fail:
 }
 
 zx_status_t ProxyDevice::MapInterrupt(uint32_t index, uint32_t flags, zx_handle_t* out_handle) {
-    if (index > irq_count_) {
+    if (index > irqs_.size()) {
         return ZX_ERR_INVALID_ARGS;
     }
 
@@ -424,70 +424,64 @@ zx_status_t ProxyDevice::Init() {
     if (status != ZX_OK) {
         return status;
     }
+    memcpy(name_, info.name, sizeof(name_));
 
     // Request mmio/irq metadata and resource handles from the platform. If
     // this driver dies/exits they will be freed back to the address space
     // allocators when handles are reaped in process teardown.
-    mmio_count_ = info.mmio_count;
-    irq_count_ = info.irq_count;
-    memcpy(name_, info.name, sizeof(name_));
+    for (uint32_t i = 0; i < info.mmio_count; i++) {
+        pdev_req_t req = {};
+        pdev_resp_t resp;
+        zx_handle_t rsrc_handle;
 
-    if (mmio_count_) {
-        mmios_ = static_cast<pbus_mmio_t*>(malloc(sizeof(pbus_mmio_t) * mmio_count_));
-        if (!mmios_) {
+        req.op = PDEV_GET_MMIO;
+        req.index = i;
+        auto status = Rpc(&req, sizeof(req), &resp, sizeof(resp), nullptr, 0, &rsrc_handle, 1,
+                          nullptr);
+        if (status != ZX_OK) {
             return status;
         }
 
-        for (uint32_t i = 0; i < mmio_count_; i++) {
-            pbus_mmio_t* mmio = &mmios_[i];
-            pdev_req_t req = {};
-            pdev_resp_t resp;
-            zx_handle_t rsrc_handle;
-            
-            req.op = PDEV_GET_MMIO;
-            req.index = i;
-            auto status = Rpc(&req, sizeof(req), &resp, sizeof(resp), nullptr, 0, &rsrc_handle, 1,
-                              nullptr);
-            if (status != ZX_OK) {
-                return status;
-            }
+        pbus_mmio_t mmio;
+        mmio.base = resp.mmio.paddr;
+        mmio.length = resp.mmio.length;
+        mmio.resource = rsrc_handle;
 
-            mmio->base = resp.mmio.paddr;
-            mmio->length = resp.mmio.length;
-            mmio->resource = rsrc_handle;
-
-            zxlogf(SPEW, "%s: received MMIO %u (base %#lx length %#lx handle %#x)\n",
-                    name_, i, mmio->base, mmio->length, mmio->resource);
+        fbl::AllocChecker ac;
+        mmios_.push_back(mmio, &ac);
+        if (!ac.check()) {
+            return ZX_ERR_NO_MEMORY;
         }
+
+        zxlogf(SPEW, "%s: received MMIO %u (base %#lx length %#lx handle %#x)\n",
+                name_, i, mmio.base, mmio.length, mmio.resource);
     }
 
-    if (irq_count_) {
-        irqs_ = static_cast<pbus_irq_t*>(malloc(sizeof(pbus_irq_t) * irq_count_));
-        if (!irqs_) {
+    for (uint32_t i = 0; i < info.irq_count; i++) {
+        pdev_req_t req = {};
+        pdev_resp_t resp;
+        zx_handle_t rsrc_handle;
+
+        req.op = PDEV_GET_INTERRUPT;
+        req.index = i;
+        auto status = Rpc(&req, sizeof(req), &resp, sizeof(resp), nullptr, 0, &rsrc_handle, 1,
+                          nullptr);
+        if (status != ZX_OK) {
             return status;
         }
 
-        for (uint32_t i = 0; i < irq_count_; i++) {
-            pbus_irq_t* irq = &irqs_[i];
-            pdev_req_t req = {};
-            pdev_resp_t resp;
-            zx_handle_t rsrc_handle;
-        
-            req.op = PDEV_GET_INTERRUPT;
-            req.index = i;
-            auto status = Rpc(&req, sizeof(req), &resp, sizeof(resp), nullptr, 0, &rsrc_handle, 1,
-                              nullptr);
-            if (status != ZX_OK) {
-                return status;
-            }
+        pbus_irq_t irq;
+        irq.irq = resp.irq;
+        irq.resource = rsrc_handle;
 
-            irq->irq = resp.irq;
-            irq->resource = rsrc_handle;
-            return ZX_OK;
-
-            zxlogf(SPEW, "%s: received IRQ %u (irq %#x handle %#x)\n",
-                    name_, i, irq->irq, irq->resource);
+        fbl::AllocChecker ac;
+        irqs_.push_back(irq, &ac);
+        if (!ac.check()) {
+            return ZX_ERR_NO_MEMORY;
         }
+
+        zxlogf(SPEW, "%s: received IRQ %u (irq %#x handle %#x)\n",
+                name_, i, irq.irq, irq.resource);
     }
 
     return ZX_OK;
@@ -568,12 +562,6 @@ zx_status_t ProxyDevice::DdkGetProtocol(uint32_t proto_id, void* out) {
 
 void ProxyDevice::DdkRelease() {
     delete this;
-}
-
-ProxyDevice::~ProxyDevice() {
-    // FIXME close resource handles too
-    free(mmios_);
-    free(irqs_);
 }
 
 } // namespace platform_bus
