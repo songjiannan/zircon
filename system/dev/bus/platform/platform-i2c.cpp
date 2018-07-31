@@ -3,32 +3,18 @@
 // found in the LICENSE file.
 
 #include <ddk/debug.h>
-#include <ddk/protocol/i2c.h>
 #include <zircon/listnode.h>
 #include <zircon/threads.h>
 #include <stdlib.h>
 #include <threads.h>
 
 #include "platform-bus.h"
+#include "platform-i2c.h"
 #include "platform-proxy.h"
-
-typedef struct platform_i2c_bus {
-    i2c_impl_protocol_t i2c;
-    uint32_t bus_id;
-    size_t max_transfer;
-
-    list_node_t queued_txns;
-    list_node_t free_txns;
-    sync_completion_t txn_signal;
-
-    thrd_t thread;
-    mtx_t lock;
-} platform_i2c_bus_t;
 
 typedef struct {
     uint32_t txid;
     zx_handle_t channel_handle;
-
 
     list_node_t node;
     size_t write_length;
