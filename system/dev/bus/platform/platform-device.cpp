@@ -14,6 +14,7 @@
 #include <zircon/syscalls/resource.h>
 
 #include "platform-bus.h"
+#include "platform-device.h"
 #include "platform-proxy.h"
 
 // An overview of platform-device and platform proxy.
