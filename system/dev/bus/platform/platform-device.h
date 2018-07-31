@@ -6,6 +6,7 @@
 
 #include <ddk/device.h>
 #include <ddk/protocol/platform-bus.h>
+#include <fbl/vector.h>
 
 typedef struct platform_bus platform_bus_t;
 
@@ -22,20 +23,13 @@ typedef struct {
     serial_port_info_t serial_port_info;
     bool enabled;
 
-    pbus_mmio_t* mmios;
-    pbus_irq_t* irqs;
-    pbus_gpio_t* gpios;
-    pbus_i2c_channel_t* i2c_channels;
-    pbus_clk_t* clks;
-    pbus_bti_t* btis;
-    pbus_metadata_t* metadata;
-    uint32_t mmio_count;
-    uint32_t irq_count;
-    uint32_t gpio_count;
-    uint32_t i2c_channel_count;
-    uint32_t clk_count;
-    uint32_t bti_count;
-    uint32_t metadata_count;
+    fbl::Vector<pbus_mmio_t> mmios;
+    fbl::Vector<pbus_irq_t> irqs;
+    fbl::Vector<pbus_gpio_t> gpios;
+    fbl::Vector<pbus_i2c_channel_t> i2c_channels;
+    fbl::Vector<pbus_clk_t> clks;
+    fbl::Vector<pbus_bti_t> btis;
+    fbl::Vector<pbus_metadata_t> metadata;
 } platform_dev_t;
 
 void platform_dev_free(platform_dev_t* dev);
