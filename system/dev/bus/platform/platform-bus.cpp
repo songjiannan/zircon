@@ -17,6 +17,7 @@
 #include <zircon/syscalls/iommu.h>
 
 #include "platform-bus.h"
+#include "platform-device.h"
 
 static zx_status_t platform_bus_get_bti(void* ctx, uint32_t iommu_index, uint32_t bti_id,
                                         zx_handle_t* out_handle) {
