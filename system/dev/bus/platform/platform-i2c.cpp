@@ -89,7 +89,7 @@ static int i2c_bus_thread(void *arg) {
 }
 
 zx_status_t platform_i2c_init(platform_bus_t* bus, i2c_impl_protocol_t* i2c) {
-    if (bus->i2c_buses) {
+    if (!bus->i2c_buses.is_empty()) {
         // already initialized
         return ZX_ERR_BAD_STATE;
     }
@@ -99,16 +99,18 @@ zx_status_t platform_i2c_init(platform_bus_t* bus, i2c_impl_protocol_t* i2c) {
         return ZX_ERR_NOT_SUPPORTED;
     }
 
-    platform_i2c_bus_t* i2c_buses = static_cast<platform_i2c_bus_t*>(calloc(bus_count,
-                                                                     sizeof(platform_i2c_bus_t)));
-    if (!i2c_buses) {
+    fbl::AllocChecker ac;
+    bus->i2c_buses.reserve(bus_count, &ac);
+    if (!ac.check()) {
         return ZX_ERR_NO_MEMORY;
     }
 
-    zx_status_t status = ZX_OK;
-
     for (uint32_t i = 0; i < bus_count; i++) {
-        platform_i2c_bus_t* i2c_bus = &i2c_buses[i];
+        platform_i2c_bus_t dummy = {};
+        fbl::AllocChecker ac;
+        bus->i2c_buses.push_back(dummy);
+
+        platform_i2c_bus_t* i2c_bus = &bus->i2c_buses[i];
 
         i2c_bus->bus_id = i;
         mtx_init(&i2c_bus->lock, mtx_plain);
@@ -117,9 +119,9 @@ zx_status_t platform_i2c_init(platform_bus_t* bus, i2c_impl_protocol_t* i2c) {
         sync_completion_reset(&i2c_bus->txn_signal);
         memcpy(&i2c_bus->i2c, i2c, sizeof(i2c_bus->i2c));
 
-        status = i2c_impl_get_max_transfer_size(i2c, i, &i2c_bus->max_transfer);
+        auto status = i2c_impl_get_max_transfer_size(i2c, i, &i2c_bus->max_transfer);
         if (status != ZX_OK) {
-            goto fail;
+            return status;
         }
 
         char name[32];
@@ -127,19 +129,12 @@ zx_status_t platform_i2c_init(platform_bus_t* bus, i2c_impl_protocol_t* i2c) {
         thrd_create_with_name(&i2c_bus->thread, i2c_bus_thread, i2c_bus, name);
     }
 
-    bus->i2c_buses = i2c_buses;
-    bus->i2c_bus_count = bus_count;
-
     return ZX_OK;
-
-fail:
-    free(i2c_buses);
-    return status;
 }
 
 zx_status_t platform_i2c_transact(platform_bus_t* bus, pdev_req_t* req, pbus_i2c_channel_t* channel,
                                   const void* write_buf, zx_handle_t channel_handle) {
-    if (channel->bus_id >= bus->i2c_bus_count) {
+    if (channel->bus_id >= bus->i2c_buses.size()) {
         return ZX_ERR_INVALID_ARGS;
     }
     platform_i2c_bus_t* i2c_bus = &bus->i2c_buses[channel->bus_id];

@@ -5,7 +5,6 @@
 #pragma once
 
 #include <stdint.h>
-#include <threads.h>
 #include <ddk/device.h>
 #include <ddk/protocol/clk.h>
 #include <ddk/protocol/gpio.h>
@@ -17,14 +16,14 @@
 #include <ddk/protocol/usb-mode-switch.h>
 #include <ddk/protocol/mailbox.h>
 #include <ddk/protocol/scpi.h>
+#include <fbl/vector.h>
 #include <lib/sync/completion.h>
 #include <zircon/boot/image.h>
 #include <zircon/types.h>
 
-typedef struct pdev_req pdev_req_t;
+#include "platform-device.h"
+#include "platform-i2c.h"
 
-// this struct is local to platform-i2c.c
-typedef struct platform_i2c_bus platform_i2c_bus_t;
 
 // context structure for the platform bus
 typedef struct platform_bus {
@@ -44,8 +43,7 @@ typedef struct platform_bus {
 
     list_node_t devices;    // list of platform_dev_t
 
-    platform_i2c_bus_t* i2c_buses;
-    uint32_t i2c_bus_count;
+    fbl::Vector<platform_i2c_bus_t> i2c_buses;
 
     zx_handle_t dummy_iommu_handle;
 
@@ -57,10 +55,5 @@ zx_status_t platform_bus_get_protocol(void* ctx, uint32_t proto_id, void* protoc
 
 __BEGIN_CDECLS
 zx_status_t platform_bus_create(void* ctx, zx_device_t* parent, const char* name,
-                                const char* args, zx_handle_t zbi_vmo);
+                                const char* args, zx_handle_t rpc_channel);
 __END_CDECLS
-
-// platform-i2c.c
-zx_status_t platform_i2c_init(platform_bus_t* bus, i2c_impl_protocol_t* i2c);
-zx_status_t platform_i2c_transact(platform_bus_t* bus, pdev_req_t* req, pbus_i2c_channel_t* channel,
-                                  const void* write_buf, zx_handle_t channel_handle);
