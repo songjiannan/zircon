@@ -38,16 +38,15 @@ typedef struct platform_bus {
     canvas_protocol_t canvas;
     zx_handle_t resource;   // root resource for platform bus
     zbi_platform_id_t platform_id;
-    uint8_t* metadata;   // metadata extracted from ZBI
+    zx_handle_t dummy_iommu_handle;
+    sync_completion_t proto_completion;
+
+    // metadata extracted from ZBI
+    uint8_t* metadata;
     size_t metadata_size;
 
-    list_node_t devices;    // list of platform_dev_t
-
+    fbl::Vector<platform_dev_t*> devices;
     fbl::Vector<platform_i2c_bus_t> i2c_buses;
-
-    zx_handle_t dummy_iommu_handle;
-
-    sync_completion_t proto_completion;
 } platform_bus_t;
 
 // platform-bus.c

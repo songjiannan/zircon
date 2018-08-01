@@ -100,8 +100,7 @@ static zx_status_t platform_bus_device_add(void* ctx, const pbus_dev_t* dev, uin
 static zx_status_t platform_bus_device_enable(void* ctx, uint32_t vid, uint32_t pid, uint32_t did,
                                               bool enable) {
     platform_bus_t* bus = static_cast<platform_bus_t*>(ctx);
-    platform_dev_t* dev;
-    list_for_every_entry(&bus->devices, dev, platform_dev_t, node) {
+    for (auto& dev : bus->devices) {
         if (dev->vid == vid && dev->pid == pid && dev->did == did) {
             return platform_device_enable(dev, enable);
         }
@@ -193,10 +192,7 @@ zx_status_t platform_bus_get_protocol(void* ctx, uint32_t proto_id, void* protoc
 static void platform_bus_release(void* ctx) {
     platform_bus_t* bus = static_cast<platform_bus_t*>(ctx);
 
-    platform_dev_t* dev;
-    list_for_every_entry(&bus->devices, dev, platform_dev_t, node) {
-        platform_dev_free(dev);
-    }
+    bus->devices.reset();
 
     zx_handle_close(bus->dummy_iommu_handle);
     free(bus->metadata);
@@ -380,8 +376,6 @@ zx_status_t platform_bus_create(void* ctx, zx_device_t* parent, const char* name
     }
 
     // Then we attach the platform-bus device below it
-    list_initialize(&bus->devices);
-
     zx_device_prop_t props[] = {
         {BIND_PLATFORM_DEV_VID, 0, bus->platform_id.vid},
         {BIND_PLATFORM_DEV_PID, 0, bus->platform_id.pid},

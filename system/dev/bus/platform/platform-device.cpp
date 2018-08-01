@@ -609,12 +609,24 @@ zx_status_t platform_device_add(platform_bus_t* bus, const pbus_dev_t* pdev, uin
         return ZX_ERR_INVALID_ARGS;
     }
 
-    fbl::AllocChecker ac;
-
     platform_dev_t* dev = static_cast<platform_dev_t*>(calloc(1, sizeof(platform_dev_t)));
     if (!dev) {
         return ZX_ERR_NO_MEMORY;
     }
+
+    dev->bus = bus;
+    dev->flags = flags;
+    if (!pdev->name) {
+        return ZX_ERR_INVALID_ARGS;
+    }
+    strlcpy(dev->name, pdev->name, sizeof(dev->name));
+    dev->vid = pdev->vid;
+    dev->pid = pdev->pid;
+    dev->did = pdev->did;
+    memcpy(&dev->serial_port_info, &pdev->serial_port_info, sizeof(dev->serial_port_info));
+
+    fbl::AllocChecker ac;
+
     if (pdev->mmio_count) {
         dev->mmios.reserve(pdev->mmio_count, &ac);
         if (!ac.check()) {
@@ -679,27 +691,13 @@ zx_status_t platform_device_add(platform_bus_t* bus, const pbus_dev_t* pdev, uin
         }
     }
 
-    dev->bus = bus;
-    dev->flags = flags;
-    if (!pdev->name) {
-        status = ZX_ERR_INVALID_ARGS;
-        goto fail;
+    bus->devices.push_back(dev, &ac);
+    if (!ac.check()) {
+        return ZX_ERR_NO_MEMORY;
     }
-    strlcpy(dev->name, pdev->name, sizeof(dev->name));
-    dev->vid = pdev->vid;
-    dev->pid = pdev->pid;
-    dev->did = pdev->did;
-    memcpy(&dev->serial_port_info, &pdev->serial_port_info, sizeof(dev->serial_port_info));
-
-    list_add_tail(&bus->devices, &dev->node);
 
     if ((flags & PDEV_ADD_DISABLED) == 0) {
         status = platform_device_enable(dev, true);
-    }
-
-fail:
-    if (status != ZX_OK) {
-        platform_dev_free(dev);
     }
 
     return status;
