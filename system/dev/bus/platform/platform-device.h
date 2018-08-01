@@ -8,7 +8,7 @@
 #include <ddk/protocol/platform-bus.h>
 #include <fbl/vector.h>
 
-typedef struct platform_bus platform_bus_t;
+typedef struct platform_buss platform_bus_t;
 
 // context structure for a platform device
 typedef struct {

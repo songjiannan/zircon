@@ -16,75 +16,68 @@
 #include <zircon/process.h>
 #include <zircon/syscalls/iommu.h>
 
+#include <fbl/unique_ptr.h>
+
 #include "platform-bus.h"
 #include "platform-device.h"
 
-static zx_status_t platform_bus_get_bti(void* ctx, uint32_t iommu_index, uint32_t bti_id,
-                                        zx_handle_t* out_handle) {
-    platform_bus_t* bus = static_cast<platform_bus_t*>(ctx);
+namespace platform_bus {
+
+zx_status_t PbusDevice::GetBti(uint32_t iommu_index, uint32_t bti_id, zx_handle_t* out_handle) {
     if (iommu_index != 0) {
         return ZX_ERR_OUT_OF_RANGE;
     }
-    return zx_bti_create(bus->dummy_iommu_handle, 0, bti_id, out_handle);
+    return zx_bti_create(iommu_handle_, 0, bti_id, out_handle);
 }
 
-// default IOMMU protocol to use if the board driver does not set one via pbus_set_protocol()
-static iommu_protocol_ops_t platform_bus_default_iommu_ops = {
-    .get_bti = platform_bus_get_bti,
-};
-
-static zx_status_t platform_bus_set_protocol(void* ctx, uint32_t proto_id, void* protocol) {
+zx_status_t PbusDevice::SetProtocol(uint32_t proto_id, void* protocol) {
     if (!protocol) {
         return ZX_ERR_INVALID_ARGS;
     }
-    platform_bus_t* bus = static_cast<platform_bus_t*>(ctx);
 
     switch (proto_id) {
     case ZX_PROTOCOL_USB_MODE_SWITCH:
-        memcpy(&bus->ums, protocol, sizeof(bus->ums));
+        memcpy(&ums_, protocol, sizeof(ums_));
         break;
     case ZX_PROTOCOL_GPIO:
-        memcpy(&bus->gpio, protocol, sizeof(bus->gpio));
+        memcpy(&gpio_, protocol, sizeof(gpio_));
         break;
+/*FIXME
     case ZX_PROTOCOL_I2C_IMPL: {
         zx_status_t status = platform_i2c_init(bus, (i2c_impl_protocol_t *)protocol);
         if (status != ZX_OK) {
             return status;
          }
-        memcpy(&bus->i2c, protocol, sizeof(bus->i2c));
+        memcpy(&i2c_, protocol, sizeof(i2c_));
         break;
     }
+*/
     case ZX_PROTOCOL_CLK:
-        memcpy(&bus->clk, protocol, sizeof(bus->clk));
+        memcpy(&clk_, protocol, sizeof(clk_));
         break;
     case ZX_PROTOCOL_IOMMU:
-        memcpy(&bus->iommu, protocol, sizeof(bus->iommu));
-        break;
-    case ZX_PROTOCOL_MAILBOX:
-        memcpy(&bus->mailbox, protocol, sizeof(bus->mailbox));
+//FIXME        memcpy(&bus->iommu, protocol, sizeof(bus->iommu));
         break;
     case ZX_PROTOCOL_SCPI:
-        memcpy(&bus->scpi, protocol, sizeof(bus->scpi));
+        memcpy(&scpi_, protocol, sizeof(scpi_));
         break;
     case ZX_PROTOCOL_CANVAS:
-        memcpy(&bus->canvas, protocol, sizeof(bus->canvas));
+        memcpy(&canvas_, protocol, sizeof(canvas_));
         break;
     default:
         // TODO(voydanoff) consider having a registry of arbitrary protocols
         return ZX_ERR_NOT_SUPPORTED;
     }
 
-    sync_completion_signal(&bus->proto_completion);
+    sync_completion_signal(&proto_completion_);
     return ZX_OK;
 }
 
-static zx_status_t platform_bus_wait_protocol(void* ctx, uint32_t proto_id) {
-    platform_bus_t* bus = static_cast<platform_bus_t*>(ctx);
-
+zx_status_t PbusDevice::WaitProtocol(uint32_t proto_id) {
     platform_bus_protocol_t dummy;
-    while (platform_bus_get_protocol(bus, proto_id, &dummy) == ZX_ERR_NOT_SUPPORTED) {
-        sync_completion_reset(&bus->proto_completion);
-        zx_status_t status = sync_completion_wait(&bus->proto_completion, ZX_TIME_INFINITE);
+    while (DdkGetProtocol(proto_id, &dummy) == ZX_ERR_NOT_SUPPORTED) {
+        sync_completion_reset(&proto_completion_);
+        zx_status_t status = sync_completion_wait(&proto_completion_, ZX_TIME_INFINITE);
         if (status != ZX_OK) {
             return status;
         }
@@ -92,15 +85,14 @@ static zx_status_t platform_bus_wait_protocol(void* ctx, uint32_t proto_id) {
     return ZX_OK;
 }
 
-static zx_status_t platform_bus_device_add(void* ctx, const pbus_dev_t* dev, uint32_t flags) {
-    platform_bus_t* bus = static_cast<platform_bus_t*>(ctx);
-    return platform_device_add(bus, dev, flags);
+zx_status_t PbusDevice::DeviceAdd(const pbus_dev_t* dev, uint32_t flags) {
+//FIXME    platform_bus_t* bus = static_cast<platform_bus_t*>(ctx);
+//FIXME    return platform_device_add(bus, dev, flags);
+return 0;
 }
 
-static zx_status_t platform_bus_device_enable(void* ctx, uint32_t vid, uint32_t pid, uint32_t did,
-                                              bool enable) {
-    platform_bus_t* bus = static_cast<platform_bus_t*>(ctx);
-    for (auto& dev : bus->devices) {
+zx_status_t PbusDevice::DeviceEnable(uint32_t vid, uint32_t pid, uint32_t did, bool enable) {
+    for (auto dev : devices_) {
         if (dev->vid == vid && dev->pid == pid && dev->did == did) {
             return platform_device_enable(dev, enable);
         }
@@ -109,75 +101,57 @@ static zx_status_t platform_bus_device_enable(void* ctx, uint32_t vid, uint32_t 
     return ZX_ERR_NOT_FOUND;
 }
 
-static const char* platform_bus_get_board_name(void* ctx) {
-    platform_bus_t* bus = static_cast<platform_bus_t*>(ctx);
-    return bus->platform_id.board_name;
+const char* PbusDevice::GetBoardName() {
+    return platform_id_.board_name;
 }
 
-static platform_bus_protocol_ops_t platform_bus_proto_ops = {
-    .set_protocol = platform_bus_set_protocol,
-    .wait_protocol = platform_bus_wait_protocol,
-    .device_add = platform_bus_device_add,
-    .device_enable = platform_bus_device_enable,
-    .get_board_name = platform_bus_get_board_name,
-};
-
-// not static so we can access from platform_dev_get_protocol()
-zx_status_t platform_bus_get_protocol(void* ctx, uint32_t proto_id, void* protocol) {
-    platform_bus_t* bus = static_cast<platform_bus_t*>(ctx);
-
+zx_status_t PbusDevice::DdkGetProtocol(uint32_t proto_id, void* protocol) {
     switch (proto_id) {
     case ZX_PROTOCOL_PLATFORM_BUS: {
-        platform_bus_protocol_t* proto = static_cast<platform_bus_protocol_t*>(protocol);
-        proto->ops = &platform_bus_proto_ops;
-        proto->ctx = bus;
+        auto proto = static_cast<platform_bus_protocol_t*>(protocol);
+        proto->ctx = this;
+        proto->ops = &pbus_proto_ops_;
         return ZX_OK;
     }
     case ZX_PROTOCOL_USB_MODE_SWITCH:
-        if (bus->ums.ops) {
-            memcpy(protocol, &bus->ums, sizeof(bus->ums));
+        if (ums_.ops) {
+            memcpy(protocol, &ums_, sizeof(ums_));
             return ZX_OK;
         }
         break;
     case ZX_PROTOCOL_GPIO:
-        if (bus->gpio.ops) {
-            memcpy(protocol, &bus->gpio, sizeof(bus->gpio));
+        if (gpio_.ops) {
+            memcpy(protocol, &gpio_, sizeof(gpio_));
             return ZX_OK;
         }
         break;
     case ZX_PROTOCOL_I2C_IMPL:
-        if (bus->i2c.ops) {
-            memcpy(protocol, &bus->i2c, sizeof(bus->i2c));
+        if (i2c_.ops) {
+            memcpy(protocol, &i2c_, sizeof(i2c_));
             return ZX_OK;
         }
         break;
     case ZX_PROTOCOL_CLK:
-        if (bus->clk.ops) {
-            memcpy(protocol, &bus->clk, sizeof(bus->clk));
+        if (clk_.ops) {
+            memcpy(protocol, &clk_, sizeof(clk_));
             return ZX_OK;
         }
         break;
-    case ZX_PROTOCOL_IOMMU:
-        if (bus->iommu.ops) {
-            memcpy(protocol, &bus->iommu, sizeof(bus->iommu));
-            return ZX_OK;
-        }
-        break;
-    case ZX_PROTOCOL_MAILBOX:
-        if (bus->mailbox.ops) {
-            memcpy(protocol, &bus->mailbox, sizeof(bus->mailbox));
-            return ZX_OK;
-        }
-        break;
+    case ZX_PROTOCOL_IOMMU: {
+        auto proto = static_cast<iommu_protocol_t*>(protocol);
+        proto->ctx = this;
+        proto->ops = &iommu_proto_ops_;
+        return ZX_OK;
+    }
     case ZX_PROTOCOL_SCPI:
-        if (bus->scpi.ops) {
-            memcpy(protocol, &bus->scpi, sizeof(bus->scpi));
+        if (scpi_.ops) {
+            memcpy(protocol, &scpi_, sizeof(scpi_));
             return ZX_OK;
         }
         break;
     case ZX_PROTOCOL_CANVAS:
-        if (bus->canvas.ops) {
-            memcpy(protocol, &bus->canvas, sizeof(bus->canvas));
+        if (canvas_.ops) {
+            memcpy(protocol, &canvas_, sizeof(canvas_));
             return ZX_OK;
         }
         break;
@@ -199,6 +173,7 @@ static void platform_bus_release(void* ctx) {
     free(bus);
 }
 
+/*
 static zx_protocol_device_t platform_bus_proto = {
     .version = DEVICE_OPS_VERSION,
     .get_protocol = platform_bus_get_protocol,
@@ -217,10 +192,6 @@ static zx_protocol_device_t platform_bus_proto = {
     .message = nullptr,
 };
 
-static zx_status_t platform_bus_suspend(void* ctx, uint32_t flags) {
-    return ZX_ERR_NOT_SUPPORTED;
-}
-
 static zx_protocol_device_t sys_device_proto = {
     .version = DEVICE_OPS_VERSION,
     .get_protocol = nullptr,
@@ -238,6 +209,7 @@ static zx_protocol_device_t sys_device_proto = {
     .rxrpc = nullptr,
     .message = nullptr,
 };
+*/
 
 static zx_status_t platform_bus_read_zbi(platform_bus_t* bus, zx_handle_t vmo) {
     zbi_header_t header;
@@ -328,39 +300,37 @@ static zx_status_t platform_bus_read_zbi(platform_bus_t* bus, zx_handle_t vmo) {
     return ZX_OK;
 }
 
-zx_status_t platform_bus_create(void* ctx, zx_device_t* parent, const char* name,
-                                const char* args, zx_handle_t zbi_vmo) {
-    if (!args) {
-        zxlogf(ERROR, "platform_bus_create: args missing\n");
-        return ZX_ERR_NOT_SUPPORTED;
-    }
+void PbusDevice::DdkRelease() {
+    delete this;
+}
 
-    platform_bus_t* bus = static_cast<platform_bus_t*>(calloc(1, sizeof(platform_bus_t)));
-    if (!bus) {
-        return  ZX_ERR_NO_MEMORY;
-    }
-    sync_completion_reset(&bus->proto_completion);
-    bus->resource = get_root_resource();
-
-    zx_status_t status = platform_bus_read_zbi(bus, zbi_vmo);
-    zx_handle_close(zbi_vmo);
-    if (status != ZX_OK) {
-        free(bus);
-        return status;
-    }
+zx_status_t PbusDevice::Create(zx_device_t* parent, const char* name, zx_handle_t zbi_vmo) {
 
     // set up a dummy IOMMU protocol to use in the case where our board driver does not
     // set a real one.
     zx_iommu_desc_dummy_t desc;
-    status = zx_iommu_create(bus->resource, ZX_IOMMU_TYPE_DUMMY,  &desc, sizeof(desc),
-                             &bus->dummy_iommu_handle);
+    zx_handle_t iommu_handle;
+    auto status = zx_iommu_create(get_root_resource(), ZX_IOMMU_TYPE_DUMMY,  &desc, sizeof(desc),
+                             &iommu_handle);
     if (status != ZX_OK) {
-        free(bus);
+        zx_handle_close(zbi_vmo);
         return status;
     }
-    bus->iommu.ops = &platform_bus_default_iommu_ops;
-    bus->iommu.ctx = bus;
 
+    fbl::AllocChecker ac;
+    fbl::unique_ptr<platform_bus::PbusDevice> proxy(new (&ac)
+                                                platform_bus::PbusDevice(parent, zbi_vmo, iommu_handle));
+    if (!ac.check()) {
+        zx_handle_close(zbi_vmo);
+        zx_handle_close(iommu_handle);
+        return ZX_ERR_NO_MEMORY;
+    }
+
+    status = proxy->DdkAdd(name);
+    if (status != ZX_OK) {
+        return status;
+    }
+/*
     // This creates the "sys" device
     device_add_args_t self_args = {};
     self_args.version = DEVICE_ADD_ARGS_VERSION;
@@ -391,6 +361,37 @@ zx_status_t platform_bus_create(void* ctx, zx_device_t* parent, const char* name
     add_args.props = props;
     add_args.prop_count = countof(props);
 
-   return device_add(parent, &add_args, &bus->zxdev);
+    return device_add(parent, &add_args, &bus->zxdev);
+*/  
+    
+    // devmgr is now in charge of the device.
+    __UNUSED auto* dummy = proxy.release();
+    return ZX_OK;
 }
 
+PbusDevice::PbusDevice(zx_device_t* parent, zx_handle_t zbi_vmo, zx_handle_t iommu)
+        : PbusDeviceType(parent), zbi_vmo_(zbi_vmo), iommu_handle_(iommu) {
+    sync_completion_reset(&proto_completion_);
+    resource_ = get_root_resource();
+
+/*
+    zx_status_t status = platform_bus_read_zbi(bus, zbi_vmo);
+    zx_handle_close(zbi_vmo);
+    if (status != ZX_OK) {
+        free(bus);
+        return status;
+    }
+*/
+
+//FIXME    bus->iommu.ops = &platform_bus_default_iommu_ops;
+//    bus->iommu.ctx = bus;
+}
+
+
+} // namespace platform_bus
+
+
+zx_status_t platform_bus_create(void* ctx, zx_device_t* parent, const char* name,
+                                const char* args, zx_handle_t zbi_vmo) {
+    return platform_bus::PbusDevice::Create(parent, name, zbi_vmo);
+}

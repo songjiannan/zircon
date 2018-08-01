@@ -567,7 +567,8 @@ static zx_status_t platform_dev_get_protocol(void* ctx, uint32_t proto_id, void*
         proto->ctx = dev;
         return ZX_OK;
     } else {
-        return platform_bus_get_protocol(dev->bus, proto_id, protocol);
+//FIXME        return platform_bus_get_protocol(dev->bus, proto_id, protocol);
+return -1;
     }
 }
 
