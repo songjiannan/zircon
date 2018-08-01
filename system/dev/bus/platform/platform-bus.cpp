@@ -23,14 +23,14 @@
 
 namespace platform_bus {
 
-zx_status_t PbusDevice::GetBti(uint32_t iommu_index, uint32_t bti_id, zx_handle_t* out_handle) {
+zx_status_t PlatformBus::GetBti(uint32_t iommu_index, uint32_t bti_id, zx_handle_t* out_handle) {
     if (iommu_index != 0) {
         return ZX_ERR_OUT_OF_RANGE;
     }
     return zx_bti_create(iommu_handle_, 0, bti_id, out_handle);
 }
 
-zx_status_t PbusDevice::SetProtocol(uint32_t proto_id, void* protocol) {
+zx_status_t PlatformBus::SetProtocol(uint32_t proto_id, void* protocol) {
     if (!protocol) {
         return ZX_ERR_INVALID_ARGS;
     }
@@ -73,7 +73,7 @@ zx_status_t PbusDevice::SetProtocol(uint32_t proto_id, void* protocol) {
     return ZX_OK;
 }
 
-zx_status_t PbusDevice::WaitProtocol(uint32_t proto_id) {
+zx_status_t PlatformBus::WaitProtocol(uint32_t proto_id) {
     platform_bus_protocol_t dummy;
     while (DdkGetProtocol(proto_id, &dummy) == ZX_ERR_NOT_SUPPORTED) {
         sync_completion_reset(&proto_completion_);
@@ -85,13 +85,13 @@ zx_status_t PbusDevice::WaitProtocol(uint32_t proto_id) {
     return ZX_OK;
 }
 
-zx_status_t PbusDevice::DeviceAdd(const pbus_dev_t* dev, uint32_t flags) {
+zx_status_t PlatformBus::DeviceAdd(const pbus_dev_t* dev, uint32_t flags) {
 //FIXME    platform_bus_t* bus = static_cast<platform_bus_t*>(ctx);
 //FIXME    return platform_device_add(bus, dev, flags);
 return 0;
 }
 
-zx_status_t PbusDevice::DeviceEnable(uint32_t vid, uint32_t pid, uint32_t did, bool enable) {
+zx_status_t PlatformBus::DeviceEnable(uint32_t vid, uint32_t pid, uint32_t did, bool enable) {
     for (auto dev : devices_) {
         if (dev->vid == vid && dev->pid == pid && dev->did == did) {
             return platform_device_enable(dev, enable);
@@ -101,11 +101,11 @@ zx_status_t PbusDevice::DeviceEnable(uint32_t vid, uint32_t pid, uint32_t did, b
     return ZX_ERR_NOT_FOUND;
 }
 
-const char* PbusDevice::GetBoardName() {
+const char* PlatformBus::GetBoardName() {
     return platform_id_.board_name;
 }
 
-zx_status_t PbusDevice::DdkGetProtocol(uint32_t proto_id, void* protocol) {
+zx_status_t PlatformBus::DdkGetProtocol(uint32_t proto_id, void* protocol) {
     switch (proto_id) {
     case ZX_PROTOCOL_PLATFORM_BUS: {
         auto proto = static_cast<platform_bus_protocol_t*>(protocol);
@@ -192,6 +192,9 @@ static zx_protocol_device_t platform_bus_proto = {
     .message = nullptr,
 };
 
+*/
+
+
 static zx_protocol_device_t sys_device_proto = {
     .version = DEVICE_OPS_VERSION,
     .get_protocol = nullptr,
@@ -204,12 +207,11 @@ static zx_protocol_device_t sys_device_proto = {
     .write = nullptr,
     .get_size = nullptr,
     .ioctl = nullptr,
-    .suspend = platform_bus_suspend,
+    .suspend = nullptr,
     .resume = nullptr,
     .rxrpc = nullptr,
     .message = nullptr,
 };
-*/
 
 static zx_status_t platform_bus_read_zbi(platform_bus_t* bus, zx_handle_t vmo) {
     zbi_header_t header;
@@ -300,37 +302,12 @@ static zx_status_t platform_bus_read_zbi(platform_bus_t* bus, zx_handle_t vmo) {
     return ZX_OK;
 }
 
-void PbusDevice::DdkRelease() {
+void PlatformBus::DdkRelease() {
     delete this;
 }
 
-zx_status_t PbusDevice::Create(zx_device_t* parent, const char* name, zx_handle_t zbi_vmo) {
+zx_status_t PlatformBus::Create(zx_device_t* parent, const char* name, zx_handle_t zbi_vmo) {
 
-    // set up a dummy IOMMU protocol to use in the case where our board driver does not
-    // set a real one.
-    zx_iommu_desc_dummy_t desc;
-    zx_handle_t iommu_handle;
-    auto status = zx_iommu_create(get_root_resource(), ZX_IOMMU_TYPE_DUMMY,  &desc, sizeof(desc),
-                             &iommu_handle);
-    if (status != ZX_OK) {
-        zx_handle_close(zbi_vmo);
-        return status;
-    }
-
-    fbl::AllocChecker ac;
-    fbl::unique_ptr<platform_bus::PbusDevice> proxy(new (&ac)
-                                                platform_bus::PbusDevice(parent, zbi_vmo, iommu_handle));
-    if (!ac.check()) {
-        zx_handle_close(zbi_vmo);
-        zx_handle_close(iommu_handle);
-        return ZX_ERR_NO_MEMORY;
-    }
-
-    status = proxy->DdkAdd(name);
-    if (status != ZX_OK) {
-        return status;
-    }
-/*
     // This creates the "sys" device
     device_add_args_t self_args = {};
     self_args.version = DEVICE_ADD_ARGS_VERSION;
@@ -338,13 +315,38 @@ zx_status_t PbusDevice::Create(zx_device_t* parent, const char* name, zx_handle_
     self_args.ops = &sys_device_proto;
     self_args.flags = DEVICE_ADD_NON_BINDABLE;
 
-    status = device_add(parent, &self_args, &parent);
+    auto status = device_add(parent, &self_args, &parent);
     if (status != ZX_OK) {
-        zx_handle_close(bus->dummy_iommu_handle);
-        free(bus);
         return status;
     }
 
+
+    // set up a dummy IOMMU protocol to use in the case where our board driver does not
+    // set a real one.
+    zx_iommu_desc_dummy_t desc;
+    zx_handle_t iommu_handle;
+    status = zx_iommu_create(get_root_resource(), ZX_IOMMU_TYPE_DUMMY,  &desc, sizeof(desc),
+                             &iommu_handle);
+    if (status != ZX_OK) {
+        zx_handle_close(zbi_vmo);
+        return status;
+    }
+
+    fbl::AllocChecker ac;
+    fbl::unique_ptr<platform_bus::PlatformBus> proxy(new (&ac)
+                                        platform_bus::PlatformBus(parent, zbi_vmo, iommu_handle));
+    if (!ac.check()) {
+        zx_handle_close(zbi_vmo);
+        zx_handle_close(iommu_handle);
+        return ZX_ERR_NO_MEMORY;
+    }
+
+
+    status = proxy->DdkAdd(name);
+    if (status != ZX_OK) {
+        return status;
+    }
+/*
     // Then we attach the platform-bus device below it
     zx_device_prop_t props[] = {
         {BIND_PLATFORM_DEV_VID, 0, bus->platform_id.vid},
@@ -369,8 +371,8 @@ zx_status_t PbusDevice::Create(zx_device_t* parent, const char* name, zx_handle_
     return ZX_OK;
 }
 
-PbusDevice::PbusDevice(zx_device_t* parent, zx_handle_t zbi_vmo, zx_handle_t iommu)
-        : PbusDeviceType(parent), zbi_vmo_(zbi_vmo), iommu_handle_(iommu) {
+PlatformBus::PlatformBus(zx_device_t* parent, zx_handle_t zbi_vmo, zx_handle_t iommu)
+        : PlatformBusType(parent), zbi_vmo_(zbi_vmo), iommu_handle_(iommu) {
     sync_completion_reset(&proto_completion_);
     resource_ = get_root_resource();
 
@@ -393,5 +395,5 @@ PbusDevice::PbusDevice(zx_device_t* parent, zx_handle_t zbi_vmo, zx_handle_t iom
 
 zx_status_t platform_bus_create(void* ctx, zx_device_t* parent, const char* name,
                                 const char* args, zx_handle_t zbi_vmo) {
-    return platform_bus::PbusDevice::Create(parent, name, zbi_vmo);
+    return platform_bus::PlatformBus::Create(parent, name, zbi_vmo);
 }

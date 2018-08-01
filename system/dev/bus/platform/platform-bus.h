@@ -34,11 +34,11 @@
 
 namespace platform_bus {
 
-class PbusDevice;
-using PbusDeviceType = ddk::Device<PbusDevice, ddk::GetProtocolable>;
+class PlatformBus;
+using PlatformBusType = ddk::Device<PlatformBus, ddk::GetProtocolable>;
 
-class PbusDevice : public PbusDeviceType, public ddk::PbusProtocol<PbusDevice>,
-                   ddk::IommuProtocol<PbusDevice> {
+class PlatformBus : public PlatformBusType, public ddk::PbusProtocol<PlatformBus>,
+                    ddk::IommuProtocol<PlatformBus> {
 public:
     static zx_status_t Create(zx_device_t* parent, const char* name, zx_handle_t zbi_vmo);
 
@@ -98,9 +98,9 @@ public:
 */
 
 private:
-    explicit PbusDevice(zx_device_t* parent, zx_handle_t zbi_vmo, zx_handle_t iommu);
+    explicit PlatformBus(zx_device_t* parent, zx_handle_t zbi_vmo, zx_handle_t iommu);
 
-    DISALLOW_COPY_ASSIGN_AND_MOVE(PbusDevice);
+    DISALLOW_COPY_ASSIGN_AND_MOVE(PlatformBus);
 
     zx::vmo zbi_vmo_;
 
