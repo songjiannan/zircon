@@ -92,6 +92,11 @@ static zx_status_t platform_dev_get_bti(void* ctx, uint32_t index, zx_handle_t* 
     if (!iommu->ops) {
         return ZX_ERR_NOT_SUPPORTED;
     }
+
+
+printf("platform_dev_get_bti %u:%u:%u index %u size %zu\n", dev->vid, dev->pid, dev->did, index, dev->btis.size());
+
+
     if (index >= dev->btis.size() || !out_handle) {
         return ZX_ERR_INVALID_ARGS;
     }
@@ -564,97 +569,97 @@ zx_status_t platform_device_add(platform_bus_t* bus, const pbus_dev_t* pdev, uin
         return ZX_ERR_INVALID_ARGS;
     }
 
+    platform_dev_t dev = {};
+
+    dev.bus = bus;
+    dev.flags = flags;
+    if (!pdev->name) {
+        return ZX_ERR_INVALID_ARGS;
+    }
+    strlcpy(dev.name, pdev->name, sizeof(dev.name));
+    dev.vid = pdev->vid;
+    dev.pid = pdev->pid;
+    dev.did = pdev->did;
+    memcpy(&dev.serial_port_info, &pdev->serial_port_info, sizeof(dev.serial_port_info));
+
+printf("platform_device_add %u:%u:%u bti_count: %u\n", dev.vid, dev.pid, dev.did, pdev->bti_count);
+
     fbl::AllocChecker ac;
 
-    platform_dev_t* dev = static_cast<platform_dev_t*>(calloc(1, sizeof(platform_dev_t)));
-    if (!dev) {
-        return ZX_ERR_NO_MEMORY;
-    }
     if (pdev->mmio_count) {
-        dev->mmios.reserve(pdev->mmio_count, &ac);
+        dev.mmios.reserve(pdev->mmio_count, &ac);
         if (!ac.check()) {
             return ZX_ERR_NO_MEMORY;
         }
         for (uint32_t i = 0; i < pdev->mmio_count; i++) {
-            dev->mmios.push_back(pdev->mmios[i]);
+            dev.mmios.push_back(pdev->mmios[i]);
         }
     }
     if (pdev->irq_count) {
-        dev->irqs.reserve(pdev->irq_count, &ac);
+        dev.irqs.reserve(pdev->irq_count, &ac);
         if (!ac.check()) {
             return ZX_ERR_NO_MEMORY;
         }
         for (uint32_t i = 0; i < pdev->irq_count; i++) {
-            dev->irqs.push_back(pdev->irqs[i]);
+            dev.irqs.push_back(pdev->irqs[i]);
         }
     }
     if (pdev->gpio_count) {
-        dev->gpios.reserve(pdev->gpio_count, &ac);
+        dev.gpios.reserve(pdev->gpio_count, &ac);
         if (!ac.check()) {
             return ZX_ERR_NO_MEMORY;
         }
         for (uint32_t i = 0; i < pdev->gpio_count; i++) {
-            dev->gpios.push_back(pdev->gpios[i]);
+            dev.gpios.push_back(pdev->gpios[i]);
         }
     }
     if (pdev->i2c_channel_count) {
-        dev->i2c_channels.reserve(pdev->i2c_channel_count, &ac);
+        dev.i2c_channels.reserve(pdev->i2c_channel_count, &ac);
         if (!ac.check()) {
             return ZX_ERR_NO_MEMORY;
         }
         for (uint32_t i = 0; i < pdev->i2c_channel_count; i++) {
-            dev->i2c_channels.push_back(pdev->i2c_channels[i]);
+            dev.i2c_channels.push_back(pdev->i2c_channels[i]);
         }
     }
     if (pdev->clk_count) {
-        dev->clks.reserve(pdev->clk_count, &ac);
+        dev.clks.reserve(pdev->clk_count, &ac);
         if (!ac.check()) {
             return ZX_ERR_NO_MEMORY;
         }
         for (uint32_t i = 0; i < pdev->clk_count; i++) {
-            dev->clks.push_back(pdev->clks[i]);
+            dev.clks.push_back(pdev->clks[i]);
         }
     }
     if (pdev->bti_count) {
-        dev->btis.reserve(pdev->bti_count, &ac);
+        dev.btis.reserve(pdev->bti_count, &ac);
         if (!ac.check()) {
             return ZX_ERR_NO_MEMORY;
         }
         for (uint32_t i = 0; i < pdev->bti_count; i++) {
-            dev->btis.push_back(pdev->btis[i]);
+            dev.btis.push_back(pdev->btis[i]);
         }
     }
     if (pdev->metadata_count) {
-        dev->metadata.reserve(pdev->metadata_count, &ac);
+        dev.metadata.reserve(pdev->metadata_count, &ac);
         if (!ac.check()) {
             return ZX_ERR_NO_MEMORY;
         }
         for (uint32_t i = 0; i < pdev->metadata_count; i++) {
-            dev->metadata.push_back(pdev->metadata[i]);
+            dev.metadata.push_back(pdev->metadata[i]);
         }
     }
 
-    dev->bus = bus;
-    dev->flags = flags;
-    if (!pdev->name) {
-        status = ZX_ERR_INVALID_ARGS;
-        goto fail;
+    bus->devices.push_back(fbl::move(dev), &ac);
+    if (!ac.check()) {
+        return ZX_ERR_NO_MEMORY;
     }
-    strlcpy(dev->name, pdev->name, sizeof(dev->name));
-    dev->vid = pdev->vid;
-    dev->pid = pdev->pid;
-    dev->did = pdev->did;
-    memcpy(&dev->serial_port_info, &pdev->serial_port_info, sizeof(dev->serial_port_info));
 
-    list_add_tail(&bus->devices, &dev->node);
+     platform_dev_t* devptr = &bus->devices[bus->devices.size() - 1];
+printf("MOVED %u:%u:%u bti_count: %zu\n", devptr->vid, devptr->pid, devptr->did, devptr->btis.size());
 
     if ((flags & PDEV_ADD_DISABLED) == 0) {
-        status = platform_device_enable(dev, true);
-    }
-
-fail:
-    if (status != ZX_OK) {
-        platform_dev_free(dev);
+        status = platform_device_enable(devptr, true);
     }
 
     return status;

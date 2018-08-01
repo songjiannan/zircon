@@ -14,7 +14,6 @@ typedef struct platform_bus platform_bus_t;
 typedef struct {
     zx_device_t* zxdev;
     platform_bus_t* bus;
-    list_node_t node;
     char name[ZX_DEVICE_NAME_MAX + 1];
     uint32_t flags;
     uint32_t vid;

@@ -49,8 +49,8 @@ static zx_status_t platform_dev_rpc(platform_proxy_t* proxy, pdev_req_t* req, ui
         status = ZX_ERR_INTERNAL;
         goto fail;
     } else if (handle_count != out_handle_count) {
-        zxlogf(ERROR, "platform_dev_rpc handle count %u expected %u\n", handle_count,
-                out_handle_count);
+        zxlogf(ERROR, "platform_dev_rpc op %u handle count %u expected %u\n", req->op, handle_count,
+               out_handle_count);
         status = ZX_ERR_INTERNAL;
         goto fail;
     }

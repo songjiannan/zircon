@@ -41,8 +41,7 @@ typedef struct platform_bus {
     uint8_t* metadata;   // metadata extracted from ZBI
     size_t metadata_size;
 
-    list_node_t devices;    // list of platform_dev_t
-
+    fbl::Vector<platform_dev_t> devices;
     fbl::Vector<platform_i2c_bus_t> i2c_buses;
 
     zx_handle_t dummy_iommu_handle;
