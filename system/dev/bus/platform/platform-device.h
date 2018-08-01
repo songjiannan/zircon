@@ -8,12 +8,14 @@
 #include <ddk/protocol/platform-bus.h>
 #include <fbl/vector.h>
 
-typedef struct platform_buss platform_bus_t;
+namespace platform_bus {
+
+class PlatformBus;
 
 // context structure for a platform device
 typedef struct {
     zx_device_t* zxdev;
-    platform_bus_t* bus;
+    PlatformBus* bus;
     char name[ZX_DEVICE_NAME_MAX + 1];
     uint32_t flags;
     uint32_t vid;
@@ -32,5 +34,7 @@ typedef struct {
 } platform_dev_t;
 
 void platform_dev_free(platform_dev_t* dev);
-zx_status_t platform_device_add(platform_bus_t* bus, const pbus_dev_t* dev, uint32_t flags);
+zx_status_t platform_device_add(PlatformBus* bus, const pbus_dev_t* dev, uint32_t flags);
 zx_status_t platform_device_enable(platform_dev_t* dev, bool enable);
+
+} // namespace platform_bus

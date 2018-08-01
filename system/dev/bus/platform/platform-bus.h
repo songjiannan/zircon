@@ -5,6 +5,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <threads.h>
 #include <ddk/device.h>
 #include <ddk/protocol/clk.h>
 #include <ddk/protocol/gpio.h>
@@ -23,16 +24,35 @@
 
 
 #include <ddktl/device.h>
+#include <ddktl/protocol/canvas.h>
+#include <ddktl/protocol/clk.h>
+#include <ddktl/protocol/gpio.h>
+#include <ddktl/protocol/i2c-impl.h>
 #include <ddktl/protocol/iommu.h>
 #include <ddktl/protocol/platform-bus.h>
+#include <ddktl/protocol/scpi.h>
+#include <ddktl/protocol/usb-mode-switch.h>
 #include <lib/zx/vmo.h>
-#include <fbl/macros.h>
-
+#include <fbl/unique_ptr.h>
 
 #include "platform-device.h"
-#include "platform-i2c.h"
+
+typedef struct pdev_req pdev_req_t;
 
 namespace platform_bus {
+
+typedef struct platform_i2c_bus {
+    i2c_impl_protocol_t i2c;
+    uint32_t bus_id;
+    size_t max_transfer;
+
+    list_node_t queued_txns;
+    list_node_t free_txns;
+    sync_completion_t txn_signal;
+
+    thrd_t thread;
+    mtx_t lock;
+} platform_i2c_bus_t;
 
 class PlatformBus;
 using PlatformBusType = ddk::Device<PlatformBus, ddk::GetProtocolable>;
@@ -56,62 +76,27 @@ public:
     // IOMMU protocol implementation
     zx_status_t GetBti(uint32_t iommu_index, uint32_t bti_id, zx_handle_t* out_handle);
 
-/*
-    // platform device protocol implementation
-    zx_status_t MapMmio(uint32_t index, uint32_t cache_policy, void** out_vaddr, size_t* out_size,
-                        zx_paddr_t* out_paddr, zx_handle_t* out_handle);
-    zx_status_t MapInterrupt(uint32_t index, uint32_t flags, zx_handle_t* out_handle);
-    zx_status_t GetBti(uint32_t index, zx_handle_t* out_handle);
-    zx_status_t GetDeviceInfo(pdev_device_info_t* out_info);
+    zx_handle_t GetResource() const { return get_root_resource(); }
 
-    // canvas protocol implementation
-    zx_status_t CanvasConfig(zx_handle_t vmo, size_t offset, canvas_info_t* info, uint8_t* canvas_idx);
-    zx_status_t CanvasFree(uint8_t canvas_idx);
+    fbl::unique_ptr<ddk::CanvasProtocolProxy> canvas_;
+    fbl::unique_ptr<ddk::ClkProtocolProxy> clk_;
+    fbl::unique_ptr<ddk::GpioProtocolProxy> gpio_;
+    fbl::unique_ptr<ddk::IommuProtocolProxy> iommu_;
+    fbl::unique_ptr<ddk::I2cImplProtocolProxy> i2c_impl_;
+    fbl::unique_ptr<ddk::ScpiProtocolProxy> scpi_;
+    fbl::unique_ptr<ddk::UmsProtocolProxy> ums_;
 
-    // clock protocol implementation
-    zx_status_t ClkEnable(uint32_t index);
-    zx_status_t ClkDisable(uint32_t index);
+//FIXME private:
+    explicit PlatformBus(zx_device_t* parent, zx_handle_t iommu);
 
-    // GPIO protocol implementation
-    zx_status_t GpioConfig(uint32_t index, uint32_t flags);
-    zx_status_t GpioSetAltFunction(uint32_t index, uint64_t function);
-    zx_status_t GpioRead(uint32_t index, uint8_t* out_value);
-    zx_status_t GpioWrite(uint32_t index, uint8_t value);
-    zx_status_t GpioGetInterrupt(uint32_t index, uint32_t flags, zx_handle_t* out_handle);
-    zx_status_t GpioReleaseInterrupt(uint32_t index);
-    zx_status_t GpioSetPolarity(uint32_t index, uint32_t polarity);
+    zx_status_t ReadZbi(zx_handle_t vmo);
 
-    // I2C protocol implementation
-    zx_status_t I2cTransact(uint32_t index, const void* write_buf, size_t write_length,
-                            size_t read_length, i2c_complete_cb complete_cb, void* cookie);
-    zx_status_t I2cGetMaxTransferSize(uint32_t index, size_t* out_size);
-
-    // SCPI protocol implementation
-    zx_status_t ScpiGetSensor(const char* name, uint32_t* sensor_id);
-    zx_status_t ScpiGetSensorValue(uint32_t sensor_id, uint32_t* sensor_value);
-    zx_status_t ScpiGetDvfsInfo(uint8_t power_domain, scpi_opp_t* opps);
-    zx_status_t ScpiGetDvfsIdx(uint8_t power_domain, uint16_t* idx);
-    zx_status_t ScpiSetDvfsIdx(uint8_t power_domain, uint16_t idx);
-
-    // USB mode switch protocol implementation
-    zx_status_t SetUsbMode(usb_mode_t mode);
-*/
-
-private:
-    explicit PlatformBus(zx_device_t* parent, zx_handle_t zbi_vmo, zx_handle_t iommu);
+    zx_status_t I2cInit(i2c_impl_protocol_t* i2c);
+    zx_status_t I2cTransact(pdev_req_t* req, pbus_i2c_channel_t* channel,
+                                  const void* write_buf, zx_handle_t channel_handle);
 
     DISALLOW_COPY_ASSIGN_AND_MOVE(PlatformBus);
 
-    zx::vmo zbi_vmo_;
-
-    usb_mode_switch_protocol_t ums_;
-    gpio_protocol_t gpio_;
-    mailbox_protocol_t mailbox_;
-    scpi_protocol_t scpi_;
-    i2c_impl_protocol_t i2c_;
-    clk_protocol_t clk_;
-    canvas_protocol_t canvas_;
-    zx_handle_t resource_;   // root resource for platform bus
     zbi_platform_id_t platform_id_;
     uint8_t* metadata_;   // metadata extracted from ZBI
     size_t metadata_size_;
@@ -127,7 +112,7 @@ private:
 
 } // namespace platform_bus
 
-
+/*
 // context structure for the platform bus
 typedef struct platform_buss {
     zx_device_t* zxdev;
@@ -151,6 +136,7 @@ typedef struct platform_buss {
     fbl::Vector<platform_dev_t*> devices;
     fbl::Vector<platform_i2c_bus_t> i2c_buses;
 } platform_bus_t;
+*/
 
 // platform-bus.c
 zx_status_t platform_bus_get_protocol(void* ctx, uint32_t proto_id, void* protocol);
