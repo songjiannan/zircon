@@ -63,6 +63,11 @@ public:
     IommuProtocolProxy(iommu_protocol_t* proto)
         : ops_(proto->ops), ctx_(proto->ctx) {}
 
+    void GetProto(iommu_protocol_t* proto) {
+        proto->ctx = ctx_;
+        proto->ops = ops_;
+    }
+
     zx_status_t GetBti(uint32_t iommu_index, uint32_t bti_id, zx_handle_t* out_handle) {
         return ops_->get_bti(ctx_, iommu_index, bti_id, out_handle);
     }
