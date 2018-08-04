@@ -24,6 +24,21 @@
 
 namespace platform_bus {
 
+static zx_status_t platform_bus_get_bti(void* ctx, uint32_t iommu_index, uint32_t bti_id,
+                                        zx_handle_t* out_handle) {
+    auto bus = static_cast<PlatformBus*>(ctx);
+    if (iommu_index != 0) {
+        return ZX_ERR_OUT_OF_RANGE;
+    }
+    return zx_bti_create(bus->iommu_handle_, 0, bti_id, out_handle);
+}
+
+// default IOMMU protocol to use if the board driver does not set one via pbus_set_protocol()
+static iommu_protocol_ops_t platform_bus_default_iommu_ops = {
+    .get_bti = platform_bus_get_bti,
+};
+
+
 zx_status_t PlatformBus::GetBti(uint32_t iommu_index, uint32_t bti_id, zx_handle_t* out_handle) {
     if (iommu_index != 0) {
         return ZX_ERR_OUT_OF_RANGE;
@@ -75,7 +90,6 @@ zx_status_t PlatformBus::SetProtocol(uint32_t proto_id, void* protocol) {
         break;
     }
     case ZX_PROTOCOL_IOMMU: {
-// FIXME make sure we initialize default implementation
         iommu_.reset(new (&ac) ddk::IommuProtocolProxy(static_cast<iommu_protocol_t*>(protocol)));
         if (!ac.check()) {
             return ZX_ERR_NO_MEMORY;
@@ -118,10 +132,105 @@ zx_status_t PlatformBus::WaitProtocol(uint32_t proto_id) {
     return ZX_OK;
 }
 
-zx_status_t PlatformBus::DeviceAdd(const pbus_dev_t* dev, uint32_t flags) {
-//FIXME    platform_bus_t* bus = static_cast<platform_bus_t*>(ctx);
-//FIXME    return platform_device_add(bus, dev, flags);
-return 0;
+zx_status_t PlatformBus::DeviceAdd(const pbus_dev_t* pdev, uint32_t flags) {
+    zx_status_t status = ZX_OK;
+
+    if (flags & ~(PDEV_ADD_DISABLED | PDEV_ADD_PBUS_DEVHOST)) {
+        return ZX_ERR_INVALID_ARGS;
+    }
+
+    platform_dev_t* dev = static_cast<platform_dev_t*>(calloc(1, sizeof(platform_dev_t)));
+    if (!dev) {
+        return ZX_ERR_NO_MEMORY;
+    }
+
+    dev->bus = this;
+    dev->flags = flags;
+    if (!pdev->name) {
+        return ZX_ERR_INVALID_ARGS;
+    }
+    strlcpy(dev->name, pdev->name, sizeof(dev->name));
+    dev->vid = pdev->vid;
+    dev->pid = pdev->pid;
+    dev->did = pdev->did;
+    memcpy(&dev->serial_port_info, &pdev->serial_port_info, sizeof(dev->serial_port_info));
+
+    fbl::AllocChecker ac;
+
+    if (pdev->mmio_count) {
+        dev->mmios.reserve(pdev->mmio_count, &ac);
+        if (!ac.check()) {
+            return ZX_ERR_NO_MEMORY;
+        }
+        for (uint32_t i = 0; i < pdev->mmio_count; i++) {
+            dev->mmios.push_back(pdev->mmios[i]);
+        }
+    }
+    if (pdev->irq_count) {
+        dev->irqs.reserve(pdev->irq_count, &ac);
+        if (!ac.check()) {
+            return ZX_ERR_NO_MEMORY;
+        }
+        for (uint32_t i = 0; i < pdev->irq_count; i++) {
+            dev->irqs.push_back(pdev->irqs[i]);
+        }
+    }
+    if (pdev->gpio_count) {
+        dev->gpios.reserve(pdev->gpio_count, &ac);
+        if (!ac.check()) {
+            return ZX_ERR_NO_MEMORY;
+        }
+        for (uint32_t i = 0; i < pdev->gpio_count; i++) {
+            dev->gpios.push_back(pdev->gpios[i]);
+        }
+    }
+    if (pdev->i2c_channel_count) {
+        dev->i2c_channels.reserve(pdev->i2c_channel_count, &ac);
+        if (!ac.check()) {
+            return ZX_ERR_NO_MEMORY;
+        }
+        for (uint32_t i = 0; i < pdev->i2c_channel_count; i++) {
+            dev->i2c_channels.push_back(pdev->i2c_channels[i]);
+        }
+    }
+    if (pdev->clk_count) {
+        dev->clks.reserve(pdev->clk_count, &ac);
+        if (!ac.check()) {
+            return ZX_ERR_NO_MEMORY;
+        }
+        for (uint32_t i = 0; i < pdev->clk_count; i++) {
+            dev->clks.push_back(pdev->clks[i]);
+        }
+    }
+    if (pdev->bti_count) {
+        dev->btis.reserve(pdev->bti_count, &ac);
+        if (!ac.check()) {
+            return ZX_ERR_NO_MEMORY;
+        }
+        for (uint32_t i = 0; i < pdev->bti_count; i++) {
+            dev->btis.push_back(pdev->btis[i]);
+        }
+    }
+    if (pdev->metadata_count) {
+        dev->metadata.reserve(pdev->metadata_count, &ac);
+        if (!ac.check()) {
+            return ZX_ERR_NO_MEMORY;
+        }
+        for (uint32_t i = 0; i < pdev->metadata_count; i++) {
+            dev->metadata.push_back(pdev->metadata[i]);
+        }
+    }
+
+    devices_.push_back(dev, &ac);
+    if (!ac.check()) {
+        return ZX_ERR_NO_MEMORY;
+    }
+
+    if ((flags & PDEV_ADD_DISABLED) == 0) {
+        status = platform_device_enable(dev, true);
+    }
+
+    return status;
 }
 
 zx_status_t PlatformBus::DeviceEnable(uint32_t vid, uint32_t pid, uint32_t did, bool enable) {
@@ -515,6 +624,17 @@ zx_status_t PlatformBus::Create(zx_device_t* parent, const char* name, zx_handle
         return ZX_ERR_NO_MEMORY;
     }
 
+    iommu_protocol_t iommu;
+    iommu.ops = &platform_bus_default_iommu_ops;
+    iommu.ctx = bus.get();
+
+    bus->iommu_.reset(new (&ac) ddk::IommuProtocolProxy(&iommu));
+    if (!ac.check()) {
+        zx_handle_close(zbi_vmo);
+        zx_handle_close(iommu_handle);
+        return ZX_ERR_NO_MEMORY;
+    }
+
     status = bus->ReadZbi(zbi_vmo);
     zx_handle_close(zbi_vmo);
     if (status != ZX_OK) {
@@ -553,10 +673,6 @@ zx_status_t PlatformBus::Create(zx_device_t* parent, const char* name, zx_handle
 PlatformBus::PlatformBus(zx_device_t* parent, zx_handle_t iommu)
         : PlatformBusType(parent), iommu_handle_(iommu) {
     sync_completion_reset(&proto_completion_);
-
-
-//FIXME    bus->iommu.ops = &platform_bus_default_iommu_ops;
-//    bus->iommu.ctx = bus;
 }
 
 

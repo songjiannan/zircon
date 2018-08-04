@@ -74,6 +74,7 @@ public:
     const char* GetBoardName();
 
     // IOMMU protocol implementation
+    // FIXME do something with this?
     zx_status_t GetBti(uint32_t iommu_index, uint32_t bti_id, zx_handle_t* out_handle);
 
     zx_handle_t GetResource() const { return get_root_resource(); }

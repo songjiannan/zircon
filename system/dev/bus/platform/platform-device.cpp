@@ -570,8 +570,7 @@ static zx_status_t platform_dev_get_protocol(void* ctx, uint32_t proto_id, void*
         proto->ctx = dev;
         return ZX_OK;
     } else {
-//FIXME        return platform_bus_get_protocol(dev->bus, proto_id, protocol);
-return -1;
+        return dev->bus->DdkGetProtocol(proto_id, protocol);
     }
 }
 
@@ -605,107 +604,6 @@ static zx_protocol_device_t platform_dev_proto = {
     .rxrpc = platform_dev_rxrpc,
     .message = nullptr,
 };
-
-zx_status_t platform_device_add(PlatformBus* bus, const pbus_dev_t* pdev, uint32_t flags) {
-    zx_status_t status = ZX_OK;
-
-    if (flags & ~(PDEV_ADD_DISABLED | PDEV_ADD_PBUS_DEVHOST)) {
-        return ZX_ERR_INVALID_ARGS;
-    }
-
-    platform_dev_t* dev = static_cast<platform_dev_t*>(calloc(1, sizeof(platform_dev_t)));
-    if (!dev) {
-        return ZX_ERR_NO_MEMORY;
-    }
-
-    dev->bus = bus;
-    dev->flags = flags;
-    if (!pdev->name) {
-        return ZX_ERR_INVALID_ARGS;
-    }
-    strlcpy(dev->name, pdev->name, sizeof(dev->name));
-    dev->vid = pdev->vid;
-    dev->pid = pdev->pid;
-    dev->did = pdev->did;
-    memcpy(&dev->serial_port_info, &pdev->serial_port_info, sizeof(dev->serial_port_info));
-
-    fbl::AllocChecker ac;
-
-    if (pdev->mmio_count) {
-        dev->mmios.reserve(pdev->mmio_count, &ac);
-        if (!ac.check()) {
-            return ZX_ERR_NO_MEMORY;
-        }
-        for (uint32_t i = 0; i < pdev->mmio_count; i++) {
-            dev->mmios.push_back(pdev->mmios[i]);
-        }
-    }
-    if (pdev->irq_count) {
-        dev->irqs.reserve(pdev->irq_count, &ac);
-        if (!ac.check()) {
-            return ZX_ERR_NO_MEMORY;
-        }
-        for (uint32_t i = 0; i < pdev->irq_count; i++) {
-            dev->irqs.push_back(pdev->irqs[i]);
-        }
-    }
-    if (pdev->gpio_count) {
-        dev->gpios.reserve(pdev->gpio_count, &ac);
-        if (!ac.check()) {
-            return ZX_ERR_NO_MEMORY;
-        }
-        for (uint32_t i = 0; i < pdev->gpio_count; i++) {
-            dev->gpios.push_back(pdev->gpios[i]);
-        }
-    }
-    if (pdev->i2c_channel_count) {
-        dev->i2c_channels.reserve(pdev->i2c_channel_count, &ac);
-        if (!ac.check()) {
-            return ZX_ERR_NO_MEMORY;
-        }
-        for (uint32_t i = 0; i < pdev->i2c_channel_count; i++) {
-            dev->i2c_channels.push_back(pdev->i2c_channels[i]);
-        }
-    }
-    if (pdev->clk_count) {
-        dev->clks.reserve(pdev->clk_count, &ac);
-        if (!ac.check()) {
-            return ZX_ERR_NO_MEMORY;
-        }
-        for (uint32_t i = 0; i < pdev->clk_count; i++) {
-            dev->clks.push_back(pdev->clks[i]);
-        }
-    }
-    if (pdev->bti_count) {
-        dev->btis.reserve(pdev->bti_count, &ac);
-        if (!ac.check()) {
-            return ZX_ERR_NO_MEMORY;
-        }
-        for (uint32_t i = 0; i < pdev->bti_count; i++) {
-            dev->btis.push_back(pdev->btis[i]);
-        }
-    }
-    if (pdev->metadata_count) {
-        dev->metadata.reserve(pdev->metadata_count, &ac);
-        if (!ac.check()) {
-            return ZX_ERR_NO_MEMORY;
-        }
-        for (uint32_t i = 0; i < pdev->metadata_count; i++) {
-            dev->metadata.push_back(pdev->metadata[i]);
-        }
-    }
-
-    bus->devices_.push_back(dev, &ac);
-    if (!ac.check()) {
-        return ZX_ERR_NO_MEMORY;
-    }
-
-    if ((flags & PDEV_ADD_DISABLED) == 0) {
-        status = platform_device_enable(dev, true);
-    }
-
-    return status;
-}
 
 static zx_status_t platform_device_add_metadata(platform_dev_t* dev, uint32_t index) {
     uint32_t type = dev->metadata[index].type;
