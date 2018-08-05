@@ -53,7 +53,7 @@ enum {
 
     // ZX_PROTOCOL_CANVAS
     PDEV_CANVAS_CONFIG,
-    PDEV_CANCAS_FREE,
+    PDEV_CANVAS_FREE,
 };
 
 // context for canvas

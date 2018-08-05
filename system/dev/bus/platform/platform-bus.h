@@ -102,7 +102,7 @@ public:
     uint8_t* metadata_;   // metadata extracted from ZBI
     size_t metadata_size_;
 
-    fbl::Vector<platform_dev_t*> devices_;
+    fbl::Vector<fbl::unique_ptr<PlatformDevice>> devices_;
     fbl::Vector<platform_i2c_bus_t> i2c_buses_;
 
     zx_handle_t iommu_handle_;

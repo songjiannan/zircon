@@ -306,7 +306,7 @@ static zx_status_t pdev_canvas_config(void* ctx, zx_handle_t vmo,
 static zx_status_t pdev_canvas_free(void* ctx, uint8_t canvas_idx) {
     platform_proxy_t* proxy = static_cast<platform_proxy_t*>(ctx);
     pdev_req_t req = {};
-    req.op = PDEV_CANCAS_FREE;
+    req.op = PDEV_CANVAS_FREE;
     req.canvas_idx = canvas_idx;
     pdev_resp_t resp;
 
