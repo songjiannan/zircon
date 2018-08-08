@@ -485,90 +485,90 @@ zx_status_t PlatformDevice::DdkRxrpc(zx_handle_t channel) {
         return status;
     }
 
-    resp.header = req->header;
+    resp.header.txid = req->header.txid;
     zx_handle_t handle = ZX_HANDLE_INVALID;
     uint32_t handle_count = 0;
 
     switch (req->header.op) {
     case PDEV_GET_MMIO:
-        resp.status = RpcGetMmio(req->pdev.index, &resp.pdev.paddr, &resp.pdev.length, &handle,
-                                 &handle_count);
+        resp.header.status = RpcGetMmio(req->pdev.index, &resp.pdev.paddr, &resp.pdev.length,
+                                        &handle, &handle_count);
         break;
     case PDEV_GET_INTERRUPT:
-        resp.status = RpcGetInterrupt(req->pdev.index, &resp.pdev.irq, &resp.pdev.mode, &handle,
-                                     &handle_count);
+        resp.header.status = RpcGetInterrupt(req->pdev.index, &resp.pdev.irq, &resp.pdev.mode,
+                                             &handle, &handle_count);
         break;
     case PDEV_GET_BTI:
-        resp.status = RpcGetBti(req->pdev.index, &handle, &handle_count);
+        resp.header.status = RpcGetBti(req->pdev.index, &handle, &handle_count);
         break;
     case PDEV_GET_DEVICE_INFO:
-        resp.status = GetDeviceInfo(&resp.pdev.device_info);
+        resp.header.status = GetDeviceInfo(&resp.pdev.device_info);
         break;
     case PDEV_GET_BOARD_INFO:
-        resp.status = bus_->GetBoardInfo(&resp.pdev.board_info);
+        resp.header.status = bus_->GetBoardInfo(&resp.pdev.board_info);
         break;
     case UMS_SET_MODE:
-        resp.status = RpcUmsSetMode(req->ums.usb_mode);
+        resp.header.status = RpcUmsSetMode(req->ums.usb_mode);
         break;
     case GPIO_CONFIG:
-        resp.status = RpcGpioConfig(req->gpio.index, req->gpio.flags);
+        resp.header.status = RpcGpioConfig(req->gpio.index, req->gpio.flags);
         break;
     case GPIO_SET_ALT_FUNCTION:
-        resp.status = RpcGpioSetAltFunction(req->gpio.index, req->gpio.alt_function);
+        resp.header.status = RpcGpioSetAltFunction(req->gpio.index, req->gpio.alt_function);
         break;
     case GPIO_READ:
-        resp.status = RpcGpioRead(req->gpio.index, &resp.gpio.value);
+        resp.header.status = RpcGpioRead(req->gpio.index, &resp.gpio.value);
         break;
     case GPIO_WRITE:
-        resp.status = RpcGpioWrite(req->gpio.index, req->gpio.value);
+        resp.header.status = RpcGpioWrite(req->gpio.index, req->gpio.value);
         break;
     case GPIO_GET_INTERRUPT:
-        resp.status = RpcGpioGetInterrupt(req->gpio.index, req->pdev.flags, &handle, &handle_count);
+        resp.header.status = RpcGpioGetInterrupt(req->gpio.index, req->pdev.flags, &handle, &handle_count);
         break;
     case GPIO_RELEASE_INTERRUPT:
-        resp.status = RpcGpioReleaseInterrupt(req->gpio.index);
+        resp.header.status = RpcGpioReleaseInterrupt(req->gpio.index);
         break;
     case GPIO_SET_POLARITY:
-        resp.status = RpcGpioSetPolarity(req->gpio.index, req->gpio.polarity);
+        resp.header.status = RpcGpioSetPolarity(req->gpio.index, req->gpio.polarity);
         break;
     case SCPI_GET_SENSOR:
-        resp.status = RpcScpiGetSensor(req->scpi.name, &resp.scpi.sensor_id);
+        resp.header.status = RpcScpiGetSensor(req->scpi.name, &resp.scpi.sensor_id);
         break;
     case SCPI_GET_SENSOR_VALUE:
-        resp.status = RpcScpiGetSensorValue(req->scpi.sensor_id, &resp.scpi.sensor_value);
+        resp.header.status = RpcScpiGetSensorValue(req->scpi.sensor_id, &resp.scpi.sensor_value);
         break;
     case SCPI_GET_DVFS_INFO:
-        resp.status = RpcScpiGetDvfsInfo(req->scpi.power_domain, &resp.scpi.opps);
+        resp.header.status = RpcScpiGetDvfsInfo(req->scpi.power_domain, &resp.scpi.opps);
         break;
     case SCPI_GET_DVFS_IDX:
-        resp.status = RpcScpiGetDvfsIdx(req->scpi.power_domain, &resp.scpi.dvfs_idx);
+        resp.header.status = RpcScpiGetDvfsIdx(req->scpi.power_domain, &resp.scpi.dvfs_idx);
         break;
     case SCPI_SET_DVFS_IDX:
-        resp.status = RpcScpiSetDvfsIdx(req->scpi.power_domain, req->scpi.idx);
+        resp.header.status = RpcScpiSetDvfsIdx(req->scpi.power_domain, req->scpi.idx);
         break;
     case I2C_GET_MAX_TRANSFER:
-        resp.status = RpcI2cGetMaxTransferSize(req->i2c.index, &resp.i2c.max_transfer);
+        resp.header.status = RpcI2cGetMaxTransferSize(req->i2c.index, &resp.i2c.max_transfer);
         break;
     case I2C_TRANSACT:
-        resp.status = RpcI2cTransact(req, req_data.data, channel);
-        if (resp.status == ZX_OK) {
+        resp.header.status = RpcI2cTransact(req, req_data.data, channel);
+        if (resp.header.status == ZX_OK) {
             // If platform_i2c_transact succeeds, we return immmediately instead of calling
             // zx_channel_write below. Instead we will respond in platform_i2c_complete().
             return ZX_OK;
         }
         break;
     case CLK_ENABLE:
-        resp.status = RpcClkEnable(req->clk.index);
+        resp.header.status = RpcClkEnable(req->clk.index);
         break;
     case CLK_DISABLE:
-        resp.status = RpcDisable(req->clk.index);
+        resp.header.status = RpcDisable(req->clk.index);
         break;
     case CANVAS_CONFIG:
-        resp.status = RpcCanvasConfig(in_handle, req->canvas.offset, &req->canvas.info,
+        resp.header.status = RpcCanvasConfig(in_handle, req->canvas.offset, &req->canvas.info,
                                       &resp.canvas.idx);
         break;
     case CANVAS_FREE:
-        resp.status = RpcCanvasFree(req->canvas.idx);
+        resp.header.status = RpcCanvasFree(req->canvas.idx);
         break;
     default:
         zxlogf(ERROR, "platform_dev_rxrpc: unknown op %u\n", req->header.op);

@@ -21,7 +21,7 @@ public:
 private:
     // struct representing an I2C transaction.
     struct I2cTxn {
-        rpc_header_t header;
+        rpc_req_header_t header;
         zx_handle_t channel_handle;
 
         list_node_t node;

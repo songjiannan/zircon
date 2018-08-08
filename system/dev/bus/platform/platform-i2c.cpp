@@ -41,8 +41,10 @@ void PlatformI2cBus::Complete(I2cTxn* txn, zx_status_t status, const uint8_t* da
         uint8_t data[PDEV_I2C_MAX_TRANSFER_SIZE] = {};
     } resp = {
         .resp = {
-            .header = txn->header,
-            .status = status,
+            .header = {
+                .txid = txn->header.txid,
+                .status = status,
+            },
             .i2c = {
                 .max_transfer = 0,
                 .complete_cb = txn->complete_cb,

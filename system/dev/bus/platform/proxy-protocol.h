@@ -58,7 +58,12 @@ typedef struct {
     zx_txid_t txid;
     uint32_t protocol;
     uint32_t op;
-} rpc_header_t;
+} rpc_req_header_t;
+
+typedef struct {
+    zx_txid_t txid;
+    zx_status_t status;
+} rpc_rsp_header_t;
 
 typedef struct {
     uint32_t index;
@@ -133,7 +138,7 @@ typedef struct {
 } rpc_canvas_rsp_t;
 
 typedef struct {
-    rpc_header_t header;
+    rpc_req_header_t header;
     union {
         rpc_pdev_req_t pdev;
         rpc_ums_req_t ums;
@@ -146,8 +151,7 @@ typedef struct {
 } pdev_req_t;
 
 typedef struct {
-    rpc_header_t header;
-    zx_status_t status;
+    rpc_rsp_header_t header;
     union {
         rpc_pdev_rsp_t pdev;
         rpc_gpio_rsp_t gpio;

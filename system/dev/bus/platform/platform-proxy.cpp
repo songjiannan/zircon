@@ -59,7 +59,7 @@ zx_status_t PlatformProxy::Rpc(pdev_req_t* req, uint32_t req_length, pdev_resp_t
         goto fail;
     }
 
-    status = resp->status;
+    status = resp->header.status;
     if (out_data_received) {
         *out_data_received = static_cast<uint32_t>(resp_size - sizeof(pdev_resp_t));
     }
@@ -329,7 +329,7 @@ zx_status_t PlatformProxy::I2cTransact(uint32_t index, const void* write_buf, si
     if (data_received != read_length) {
         status = ZX_ERR_INTERNAL;
     } else {
-        status = resp.resp.status;
+        status = resp.resp.header.status;
     }
     if (complete_cb) {
         complete_cb(status, resp.data, resp.resp.i2c.cookie);
