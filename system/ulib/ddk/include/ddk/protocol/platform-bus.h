@@ -49,7 +49,8 @@ typedef struct {
     size_t      len;    // metadata length in bytes (set to zero for bootloader metadata)
 } pbus_metadata_t;
 
-typedef struct {
+typedef struct pbus_dev pbus_dev_t;
+struct pbus_dev {
     const char* name;
     uint32_t vid;   // BIND_PLATFORM_DEV_VID
     uint32_t pid;   // BIND_PLATFORM_DEV_PID
@@ -69,7 +70,9 @@ typedef struct {
     uint32_t bti_count;
     const pbus_metadata_t* metadata;
     uint32_t metadata_count;
-} pbus_dev_t;
+    const pbus_dev_t* children;
+    uint32_t child_count;
+};
 
 // Subset of pdev_board_info_t to be set by the board driver.
 typedef struct {

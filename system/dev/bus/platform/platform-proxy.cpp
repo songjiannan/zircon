@@ -29,11 +29,15 @@
 
 namespace platform_bus {
 
-zx_status_t PlatformProxy::Rpc(rpc_req_header_t* req, uint32_t req_length, rpc_rsp_header_t* resp,
-                               uint32_t resp_length, zx_handle_t* in_handles,
-                               uint32_t in_handle_count, zx_handle_t* out_handles,
-                               uint32_t out_handle_count, uint32_t* out_actual) {
+zx_status_t PlatformProxy::Rpc(uint32_t device_id, rpc_req_header_t* req, uint32_t req_length,
+                               rpc_rsp_header_t* resp, uint32_t resp_length,
+                               zx_handle_t* in_handles, uint32_t in_handle_count,
+                               zx_handle_t* out_handles, uint32_t out_handle_count,
+                               uint32_t* out_actual) {
     uint32_t resp_size, handle_count;
+
+    // Do this here to make sure our client does not forget to set it.
+    req->device_id = device_id;
 
     zx_channel_call_args_t args = {
         .wr_bytes = req,
@@ -81,7 +85,7 @@ zx_status_t PlatformProxy::Create(zx_device_t* parent, zx_handle_t rpc_channel) 
         return ZX_ERR_NO_MEMORY;
     }
 
-    return ProxyDevice::Create(parent, proxy);
+    return ProxyDevice::Create(parent, 0, proxy, nullptr);
 }
 
 } // namespace platform_bus

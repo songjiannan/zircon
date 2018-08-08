@@ -102,6 +102,25 @@ static const pbus_dev_t pl031_dev = {
     .mmio_count = countof(pl031_mmios),
 };
 
+static const pbus_dev_t grand_children_1[] = {
+    {}, {}, {},
+};
+
+static const pbus_dev_t grand_children_2[] = {
+    {}, {}, {}, {}, {}, {},
+};
+
+static const pbus_dev_t children[] = {
+    {
+        .children = grand_children_1,
+        .child_count = countof(grand_children_1),
+    },
+    {
+        .children = grand_children_2,
+        .child_count = countof(grand_children_2),
+    },
+};
+
 static zx_status_t qemu_bus_bind(void* ctx, zx_device_t* parent) {
     // we don't really need a context struct yet, but lets create one for future expansion.
     qemu_bus_t* bus = calloc(1, sizeof(qemu_bus_t));
@@ -145,7 +164,9 @@ static zx_status_t qemu_bus_bind(void* ctx, zx_device_t* parent) {
         .did = PDEV_DID_KPCI,
         .btis = pci_btis,
         .bti_count = countof(pci_btis),
-    };
+        .children = children,
+        .child_count = countof(children),
+        };
 
     status = pbus_device_add(&bus->pbus, &pci_dev, 0);
     if (status != ZX_OK) {
