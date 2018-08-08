@@ -22,7 +22,6 @@
 #include <zircon/syscalls/iommu.h>
 
 #include "platform-device.h"
-#include "proxy-protocol.h"
 
 namespace platform_bus {
 

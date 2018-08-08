@@ -41,11 +41,10 @@ void PlatformI2cBus::Complete(I2cTxn* txn, zx_status_t status, const uint8_t* da
         uint8_t data[PDEV_I2C_MAX_TRANSFER_SIZE] = {};
     } resp = {
         .resp = {
-            .txid = txn->txid,
+            .header = txn->header,
             .status = status,
-            .i2c_txn = {
-                .write_length = 0,
-                .read_length = 0,
+            .i2c = {
+                .max_transfer = 0,
                 .complete_cb = txn->complete_cb,
                 .cookie = txn->cookie,
             },
@@ -96,8 +95,8 @@ int PlatformI2cBus::I2cThread() {
 
  zx_status_t PlatformI2cBus::Transact(pdev_req_t* req, uint16_t address, const void* write_buf,
                                       zx_handle_t channel_handle) {
-    const size_t write_length = req->i2c_txn.write_length;
-    const size_t read_length = req->i2c_txn.read_length;
+    const size_t write_length = req->i2c.write_length;
+    const size_t read_length = req->i2c.read_length;
     if (write_length > max_transfer_ || read_length > max_transfer_) {
         return ZX_ERR_INVALID_ARGS;
     }
@@ -117,9 +116,9 @@ int PlatformI2cBus::I2cThread() {
     txn->write_length = write_length;
     txn->read_length = read_length;
     memcpy(txn->write_buffer, write_buf, write_length);
-    txn->complete_cb = req->i2c_txn.complete_cb;
-    txn->cookie = req->i2c_txn.cookie;
-    txn->txid = req->txid;
+    txn->complete_cb = req->i2c.complete_cb;
+    txn->cookie = req->i2c.cookie;
+    txn->header = req->header;
     txn->channel_handle = channel_handle;
 
     list_add_tail(&queued_txns_, &txn->node);

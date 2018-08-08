@@ -17,7 +17,6 @@
 #include <zircon/syscalls/resource.h>
 
 #include "platform-bus.h"
-#include "proxy-protocol.h"
 
 namespace platform_bus {
 
@@ -420,7 +419,7 @@ zx_status_t PlatformDevice::RpcI2cTransact(pdev_req_t* req, uint8_t* data, zx_ha
     if (bus_->i2c_impl() == nullptr) {
         return ZX_ERR_NOT_SUPPORTED;
     }
-    uint32_t index = req->index;
+    uint32_t index = req->i2c.index;
     if (index >= i2c_channels_.size()) {
         return ZX_ERR_OUT_OF_RANGE;
     }
@@ -486,71 +485,71 @@ zx_status_t PlatformDevice::DdkRxrpc(zx_handle_t channel) {
         return status;
     }
 
-    resp.txid = req->txid;
+    resp.header = req->header;
     zx_handle_t handle = ZX_HANDLE_INVALID;
     uint32_t handle_count = 0;
 
-    switch (req->op) {
+    switch (req->header.op) {
     case PDEV_GET_MMIO:
-        resp.status = RpcGetMmio(req->index, &resp.mmio.paddr, &resp.mmio.length, &handle,
+        resp.status = RpcGetMmio(req->pdev.index, &resp.pdev.paddr, &resp.pdev.length, &handle,
                                  &handle_count);
         break;
     case PDEV_GET_INTERRUPT:
-        resp.status = RpcGetInterrupt(req->index, &resp.irq.irq, &resp.irq.mode, &handle,
+        resp.status = RpcGetInterrupt(req->pdev.index, &resp.pdev.irq, &resp.pdev.mode, &handle,
                                      &handle_count);
         break;
     case PDEV_GET_BTI:
-        resp.status = RpcGetBti(req->index, &handle, &handle_count);
+        resp.status = RpcGetBti(req->pdev.index, &handle, &handle_count);
         break;
     case PDEV_GET_DEVICE_INFO:
-        resp.status = GetDeviceInfo(&resp.device_info);
+        resp.status = GetDeviceInfo(&resp.pdev.device_info);
         break;
     case PDEV_GET_BOARD_INFO:
-        resp.status = bus_->GetBoardInfo(&resp.board_info);
+        resp.status = bus_->GetBoardInfo(&resp.pdev.board_info);
         break;
-    case PDEV_UMS_SET_MODE:
-        resp.status = RpcUmsSetMode(req->usb_mode);
+    case UMS_SET_MODE:
+        resp.status = RpcUmsSetMode(req->ums.usb_mode);
         break;
-    case PDEV_GPIO_CONFIG:
-        resp.status = RpcGpioConfig(req->index, req->gpio_flags);
+    case GPIO_CONFIG:
+        resp.status = RpcGpioConfig(req->gpio.index, req->gpio.flags);
         break;
-    case PDEV_GPIO_SET_ALT_FUNCTION:
-        resp.status = RpcGpioSetAltFunction(req->index, req->gpio_alt_function);
+    case GPIO_SET_ALT_FUNCTION:
+        resp.status = RpcGpioSetAltFunction(req->gpio.index, req->gpio.alt_function);
         break;
-    case PDEV_GPIO_READ:
-        resp.status = RpcGpioRead(req->index, &resp.gpio_value);
+    case GPIO_READ:
+        resp.status = RpcGpioRead(req->gpio.index, &resp.gpio.value);
         break;
-    case PDEV_GPIO_WRITE:
-        resp.status = RpcGpioWrite(req->index, req->gpio_value);
+    case GPIO_WRITE:
+        resp.status = RpcGpioWrite(req->gpio.index, req->gpio.value);
         break;
-    case PDEV_GPIO_GET_INTERRUPT:
-        resp.status = RpcGpioGetInterrupt(req->index, req->flags, &handle, &handle_count);
+    case GPIO_GET_INTERRUPT:
+        resp.status = RpcGpioGetInterrupt(req->gpio.index, req->pdev.flags, &handle, &handle_count);
         break;
-    case PDEV_GPIO_RELEASE_INTERRUPT:
-        resp.status = RpcGpioReleaseInterrupt(req->index);
+    case GPIO_RELEASE_INTERRUPT:
+        resp.status = RpcGpioReleaseInterrupt(req->gpio.index);
         break;
-    case PDEV_GPIO_SET_POLARITY:
-        resp.status = RpcGpioSetPolarity(req->index, req->flags);
+    case GPIO_SET_POLARITY:
+        resp.status = RpcGpioSetPolarity(req->gpio.index, req->gpio.polarity);
         break;
-    case PDEV_SCPI_GET_SENSOR:
+    case SCPI_GET_SENSOR:
         resp.status = RpcScpiGetSensor(req->scpi.name, &resp.scpi.sensor_id);
         break;
-    case PDEV_SCPI_GET_SENSOR_VALUE:
+    case SCPI_GET_SENSOR_VALUE:
         resp.status = RpcScpiGetSensorValue(req->scpi.sensor_id, &resp.scpi.sensor_value);
         break;
-    case PDEV_SCPI_GET_DVFS_INFO:
+    case SCPI_GET_DVFS_INFO:
         resp.status = RpcScpiGetDvfsInfo(req->scpi.power_domain, &resp.scpi.opps);
         break;
-    case PDEV_SCPI_GET_DVFS_IDX:
+    case SCPI_GET_DVFS_IDX:
         resp.status = RpcScpiGetDvfsIdx(req->scpi.power_domain, &resp.scpi.dvfs_idx);
         break;
-    case PDEV_SCPI_SET_DVFS_IDX:
-        resp.status = RpcScpiSetDvfsIdx(req->scpi.power_domain, static_cast<uint16_t>(req->index));
+    case SCPI_SET_DVFS_IDX:
+        resp.status = RpcScpiSetDvfsIdx(req->scpi.power_domain, req->scpi.idx);
         break;
-    case PDEV_I2C_GET_MAX_TRANSFER:
-        resp.status = RpcI2cGetMaxTransferSize(req->index, &resp.i2c_max_transfer);
+    case I2C_GET_MAX_TRANSFER:
+        resp.status = RpcI2cGetMaxTransferSize(req->i2c.index, &resp.i2c.max_transfer);
         break;
-    case PDEV_I2C_TRANSACT:
+    case I2C_TRANSACT:
         resp.status = RpcI2cTransact(req, req_data.data, channel);
         if (resp.status == ZX_OK) {
             // If platform_i2c_transact succeeds, we return immmediately instead of calling
@@ -558,21 +557,21 @@ zx_status_t PlatformDevice::DdkRxrpc(zx_handle_t channel) {
             return ZX_OK;
         }
         break;
-    case PDEV_CLK_ENABLE:
-        resp.status = RpcClkEnable(req->index);
+    case CLK_ENABLE:
+        resp.status = RpcClkEnable(req->clk.index);
         break;
-    case PDEV_CLK_DISABLE:
-        resp.status = RpcDisable(req->index);
+    case CLK_DISABLE:
+        resp.status = RpcDisable(req->clk.index);
         break;
-    case PDEV_CANVAS_CONFIG:
+    case CANVAS_CONFIG:
         resp.status = RpcCanvasConfig(in_handle, req->canvas.offset, &req->canvas.info,
-                                      &resp.canvas_idx);
+                                      &resp.canvas.idx);
         break;
-    case PDEV_CANVAS_FREE:
-        resp.status = RpcCanvasFree(req->canvas_idx);
+    case CANVAS_FREE:
+        resp.status = RpcCanvasFree(req->canvas.idx);
         break;
     default:
-        zxlogf(ERROR, "platform_dev_rxrpc: unknown op %u\n", req->op);
+        zxlogf(ERROR, "platform_dev_rxrpc: unknown op %u\n", req->header.op);
         return ZX_ERR_INTERNAL;
     }
 

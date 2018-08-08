@@ -5,6 +5,7 @@
 #pragma once
 
 #include <ddk/protocol/canvas.h>
+#include <ddk/protocol/i2c.h>
 #include <ddk/protocol/platform-device.h>
 #include <ddk/protocol/scpi.h>
 #include <ddk/protocol/usb-mode-switch.h>
@@ -22,100 +23,136 @@ enum {
     PDEV_GET_BOARD_INFO,
 
     // ZX_PROTOCOL_USB_MODE_SWITCH
-    PDEV_UMS_SET_MODE,
+    UMS_SET_MODE,
 
     // ZX_PROTOCOL_GPIO
-    PDEV_GPIO_CONFIG,
-    PDEV_GPIO_SET_ALT_FUNCTION,
-    PDEV_GPIO_READ,
-    PDEV_GPIO_WRITE,
-    PDEV_GPIO_GET_INTERRUPT,
-    PDEV_GPIO_RELEASE_INTERRUPT,
-    PDEV_GPIO_SET_POLARITY,
+    GPIO_CONFIG,
+    GPIO_SET_ALT_FUNCTION,
+    GPIO_READ,
+    GPIO_WRITE,
+    GPIO_GET_INTERRUPT,
+    GPIO_RELEASE_INTERRUPT,
+    GPIO_SET_POLARITY,
 
     // ZX_PROTOCOL_I2C
-    PDEV_I2C_GET_MAX_TRANSFER,
-    PDEV_I2C_TRANSACT,
+    I2C_GET_MAX_TRANSFER,
+    I2C_TRANSACT,
 
     // ZX_PROTOCOL_CLK
-    PDEV_CLK_ENABLE,
-    PDEV_CLK_DISABLE,
+    CLK_ENABLE,
+    CLK_DISABLE,
 
     // ZX_PROTOCOL_SCPI
-    PDEV_SCPI_GET_SENSOR,
-    PDEV_SCPI_GET_SENSOR_VALUE,
-    PDEV_SCPI_GET_DVFS_INFO,
-    PDEV_SCPI_GET_DVFS_IDX,
-    PDEV_SCPI_SET_DVFS_IDX,
+    SCPI_GET_SENSOR,
+    SCPI_GET_SENSOR_VALUE,
+    SCPI_GET_DVFS_INFO,
+    SCPI_GET_DVFS_IDX,
+    SCPI_SET_DVFS_IDX,
 
     // ZX_PROTOCOL_CANVAS
-    PDEV_CANVAS_CONFIG,
-    PDEV_CANVAS_FREE,
+    CANVAS_CONFIG,
+    CANVAS_FREE,
 };
 
-// context for i2c_transact
 typedef struct {
+    zx_txid_t txid;
+    uint32_t protocol;
+    uint32_t op;
+} rpc_header_t;
+
+typedef struct {
+    uint32_t index;
+    uint32_t flags;
+} rpc_pdev_req_t;
+
+typedef struct {
+    zx_paddr_t paddr;
+    size_t length;
+    uint32_t irq;
+    uint32_t mode;
+    pdev_device_info_t device_info;
+    pdev_board_info_t board_info;
+} rpc_pdev_rsp_t;
+
+typedef struct {
+        usb_mode_t usb_mode;
+} rpc_ums_req_t;
+
+typedef struct {
+    uint32_t index;
+    uint32_t flags;
+    uint32_t polarity;
+    uint64_t alt_function;
+    uint8_t value;
+} rpc_gpio_req_t;
+
+typedef struct {
+    uint8_t value;
+} rpc_gpio_rsp_t;
+
+typedef struct {
+    uint32_t index;
     size_t write_length;
     size_t read_length;
     i2c_complete_cb complete_cb;
     void* cookie;
-} pdev_i2c_txn_ctx_t;
+} rpc_i2c_req_t;
 
 typedef struct {
-    size_t size;
-    uint32_t align_log2;
-    uint32_t cache_policy;
-} pdev_config_vmo_t;
-
-typedef struct pdev_req {
-    zx_txid_t txid;
-    uint32_t op;
     uint32_t index;
+} rpc_clk_req_t;
+
+typedef struct {
+    size_t max_transfer;
+    i2c_complete_cb complete_cb;
+    void* cookie;
+} rpc_i2c_rsp_t;
+
+typedef struct {
+    uint8_t power_domain;
+    uint16_t idx;
+    uint32_t sensor_id;
+    char name[20];
+} rpc_scpi_req_t;
+
+typedef struct {
+    uint32_t sensor_value;
+    uint16_t dvfs_idx;
+    uint32_t sensor_id;
+    scpi_opp_t opps;
+} rpc_scpi_rsp_t;
+
+typedef struct {
+    canvas_info_t info;
+    size_t offset;
+    uint8_t idx;
+} rpc_canvas_req_t;
+
+typedef struct {
+    uint8_t idx;
+} rpc_canvas_rsp_t;
+
+typedef struct {
+    rpc_header_t header;
     union {
-        usb_mode_t usb_mode;
-        uint32_t gpio_flags;
-        uint64_t gpio_alt_function;
-        uint8_t gpio_value;
-        uint8_t canvas_idx;
-        pdev_i2c_txn_ctx_t i2c_txn;
-        uint32_t i2c_bitrate;
-        uint32_t flags;
-        struct {
-            canvas_info_t info;
-            size_t offset;
-        } canvas;
-        struct {
-            uint8_t power_domain;
-            uint32_t sensor_id;
-            char name[20];
-        } scpi;
+        rpc_pdev_req_t pdev;
+        rpc_ums_req_t ums;
+        rpc_gpio_req_t gpio;
+        rpc_i2c_req_t i2c;
+        rpc_clk_req_t clk;
+        rpc_scpi_req_t scpi;
+        rpc_canvas_req_t canvas;
     };
 } pdev_req_t;
 
 typedef struct {
-    zx_txid_t txid;
+    rpc_header_t header;
     zx_status_t status;
     union {
-        usb_mode_t usb_mode;
-        uint8_t gpio_value;
-        uint8_t canvas_idx;
-        pdev_i2c_txn_ctx_t i2c_txn;
-        size_t i2c_max_transfer;
-        struct {
-            zx_paddr_t paddr;
-            size_t length;
-        } mmio;
-        struct {
-            uint32_t irq;
-            uint32_t mode;
-        } irq;
-        pdev_device_info_t device_info;
-        pdev_board_info_t board_info;
-        struct {
-            uint32_t sensor_value;
-            uint16_t dvfs_idx;
-            uint32_t sensor_id;
-            scpi_opp_t opps;
-        } scpi;
+        rpc_pdev_rsp_t pdev;
+        rpc_gpio_rsp_t gpio;
+        rpc_i2c_rsp_t i2c;
+        rpc_scpi_rsp_t scpi;
+        rpc_canvas_rsp_t canvas;
     };
 } pdev_resp_t;

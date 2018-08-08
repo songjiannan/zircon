@@ -13,6 +13,8 @@
 #include <fbl/unique_ptr.h>
 #include <fbl/vector.h>
 
+#include "proxy-protocol.h"
+
 // An overview of PlatformDevice and PlatformProxy.
 //
 // Both this class and PlatformProxy implement the platform device protocol.
@@ -29,8 +31,6 @@
 // Any resource handles passed back to the proxy are then used to create/map mmio
 // and irq objects within the proxy process. This ensures if the proxy driver dies
 // we will release their address space resources back to the kernel if necessary.
-
-typedef struct pdev_req pdev_req_t;
 
 namespace platform_bus {
 

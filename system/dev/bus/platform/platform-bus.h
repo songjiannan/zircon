@@ -28,8 +28,7 @@
 
 #include "platform-device.h"
 #include "platform-i2c.h"
-
-typedef struct pdev_req pdev_req_t;
+#include "proxy-protocol.h"
 
 namespace platform_bus {
 
