@@ -402,7 +402,7 @@ zx_status_t PlatformBus::I2cTransact(pdev_req_t* req, pbus_i2c_channel_t* channe
         return ZX_ERR_OUT_OF_RANGE;
     }
     auto i2c_bus = i2c_buses_[channel->bus_id].get();
-    return i2c_bus->Transact(req, channel->address, write_buf, channel_handle);
+    return i2c_bus->Transact(req->header.txid, &req->i2c, channel->address, write_buf, channel_handle);
 }
 
 void PlatformBus::DdkRelease() {

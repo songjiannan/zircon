@@ -16,12 +16,12 @@ public:
     explicit PlatformI2cBus(i2c_impl_protocol_t* i2c, uint32_t bus_id);
     zx_status_t Start();
 
-    zx_status_t Transact(pdev_req_t* req, uint16_t address, const void* write_buf,
+    zx_status_t Transact(uint32_t txid, rpc_i2c_req_t* req, uint16_t address, const void* write_buf,
                          zx_handle_t channel_handle);
 private:
     // struct representing an I2C transaction.
     struct I2cTxn {
-        rpc_req_header_t header;
+        uint32_t txid;
         zx_handle_t channel_handle;
 
         list_node_t node;
