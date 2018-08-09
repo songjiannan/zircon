@@ -415,17 +415,17 @@ zx_status_t PlatformDevice::RpcScpiSetDvfsIdx(uint8_t power_domain, uint16_t idx
     return bus_->scpi()->SetDvfsIdx(power_domain, idx);
 }
 
-zx_status_t PlatformDevice::RpcI2cTransact(pdev_req_t* req, uint8_t* data, zx_handle_t channel) {
+zx_status_t PlatformDevice::RpcI2cTransact(uint32_t txid, rpc_i2c_req_t* req, uint8_t* data, zx_handle_t channel) {
     if (bus_->i2c_impl() == nullptr) {
         return ZX_ERR_NOT_SUPPORTED;
     }
-    uint32_t index = req->i2c.index;
+    uint32_t index = req->index;
     if (index >= i2c_channels_.size()) {
         return ZX_ERR_OUT_OF_RANGE;
     }
     pbus_i2c_channel_t* pdev_channel = &i2c_channels_[index];
 
-    return bus_->I2cTransact(req, pdev_channel, data, channel);
+    return bus_->I2cTransact(txid, req, pdev_channel, data, channel);
 }
 
 zx_status_t PlatformDevice::RpcI2cGetMaxTransferSize(uint32_t index, size_t* out_size) {
@@ -550,7 +550,7 @@ zx_status_t PlatformDevice::DdkRxrpc(zx_handle_t channel) {
         resp.header.status = RpcI2cGetMaxTransferSize(req->i2c.index, &resp.i2c.max_transfer);
         break;
     case I2C_TRANSACT:
-        resp.header.status = RpcI2cTransact(req, req_data.data, channel);
+        resp.header.status = RpcI2cTransact(req->txid, *req->i2c, req_data.data, channel);
         if (resp.header.status == ZX_OK) {
             // If platform_i2c_transact succeeds, we return immmediately instead of calling
             // zx_channel_write below. Instead we will respond in platform_i2c_complete().

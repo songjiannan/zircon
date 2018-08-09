@@ -34,30 +34,6 @@
 
 namespace platform_bus {
 
-typedef struct {
-    rpc_req_header_t header;
-    union {
-        rpc_pdev_req_t pdev;
-        rpc_ums_req_t ums;
-        rpc_gpio_req_t gpio;
-        rpc_i2c_req_t i2c;
-        rpc_clk_req_t clk;
-        rpc_scpi_req_t scpi;
-        rpc_canvas_req_t canvas;
-    };
-} pdev_req_t;
-
-typedef struct {
-    rpc_rsp_header_t header;
-    union {
-        rpc_pdev_rsp_t pdev;
-        rpc_gpio_rsp_t gpio;
-        rpc_i2c_rsp_t i2c;
-        rpc_scpi_rsp_t scpi;
-        rpc_canvas_rsp_t canvas;
-    };
-} pdev_resp_t;
-
 class PlatformBus;
 
 class PlatformDevice;
@@ -126,7 +102,7 @@ private:
     zx_status_t RpcScpiGetDvfsInfo(uint8_t power_domain, scpi_opp_t* opps);
     zx_status_t RpcScpiGetDvfsIdx(uint8_t power_domain, uint16_t* idx);
     zx_status_t RpcScpiSetDvfsIdx(uint8_t power_domain, uint16_t idx);
-    zx_status_t RpcI2cTransact(pdev_req_t* req, uint8_t* data, zx_handle_t channel);
+    zx_status_t RpcI2cTransact(uint32_t txid, rpc_i2c_req_t* req, uint8_t* data, zx_handle_t channel);
     zx_status_t RpcI2cGetMaxTransferSize(uint32_t index, size_t* out_size);
     zx_status_t RpcClkEnable(uint32_t index);
     zx_status_t RpcDisable(uint32_t index);
