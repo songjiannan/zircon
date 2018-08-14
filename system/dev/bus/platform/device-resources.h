@@ -13,6 +13,8 @@ public:
     size_t DeviceCount() const;
     void BuildDeviceIndex(fbl::Vector<DeviceResources*>& index);
 
+    inline uint32_t device_id() const { return device_id_; }
+
     inline const pbus_mmio_t& mmio(size_t i) const { return mmios_[i]; }
     inline const pbus_irq_t& irq(size_t i) const { return irqs_[i]; }
     inline const pbus_gpio_t& gpio(size_t i) const { return gpios_[i]; }
@@ -28,8 +30,13 @@ public:
     inline size_t clk_count() const { return clks_.size(); }
     inline size_t bti_count() const { return btis_.size(); }
     inline size_t metadata_count() const { return metadata_.size(); }
+    inline size_t child_count() const { return children_.size(); }
 
 private:
+    // Device ID is index of this device in PlatformDevice::device_index_ 
+    uint32_t device_id_;
+
+    // Resources for this device.
     fbl::Vector<pbus_mmio_t> mmios_;
     fbl::Vector<pbus_irq_t> irqs_;
     fbl::Vector<pbus_gpio_t> gpios_;

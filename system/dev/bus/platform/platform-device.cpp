@@ -242,7 +242,12 @@ zx_status_t PlatformDevice::RpcGetBti(DeviceResources* dr, uint32_t index, zx_ha
 
 zx_status_t PlatformDevice::RpcDeviceAdd(DeviceResources* dr, uint32_t index,
                                          uint32_t* out_device_id) {
-return -1;
+    if (index >= dr->child_count()) {
+        return ZX_ERR_OUT_OF_RANGE;
+    }
+    // TODO(voydanoff) verify that this device has not already been added?
+    *out_device_id = dr->device_id();
+    return ZX_OK;
 }
 
 zx_status_t PlatformDevice::RpcUmsSetMode(DeviceResources* dr, usb_mode_t mode) {

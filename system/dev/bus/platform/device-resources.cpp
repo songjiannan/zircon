@@ -97,6 +97,7 @@ size_t DeviceResources::DeviceCount() const {
 }
 
 void DeviceResources::BuildDeviceIndex(fbl::Vector<DeviceResources*>& index) {
+    device_id_ = static_cast<uint32_t>(index.size());
     index.push_back(this);
     for (auto& dr : children_) {
         dr.BuildDeviceIndex(index);
