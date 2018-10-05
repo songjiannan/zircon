@@ -19,6 +19,8 @@ public:
     zx_status_t Init(zx_device_t* parent);
     void Enable();
     void Disable();
+    void SetMax();
+    void SetMin();
 
 private:
     gpio_protocol_t                 gpio_ = {};

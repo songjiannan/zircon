@@ -62,6 +62,20 @@ zx_status_t Backlight::Init(zx_device_t* parent) {
     return ZX_OK;
 }
 
+void Backlight::SetMax() {
+    uint8_t cmd[] = {0x00, 0xff};
+    if (i2c_write_sync(&i2c_, &cmd, 2) != ZX_OK) {
+        DISP_ERROR("Could not set backlight to maximum value\n");
+    }
+}
+
+void Backlight::SetMin() {
+    uint8_t cmd[] = {0x00, 0x01};
+    if(i2c_write_sync(&i2c_, &cmd, 2) != ZX_OK) {
+        DISP_ERROR("Could not set backlight to minuimum value\n");
+    }
+}
+
 void Backlight::Enable() {
     ZX_DEBUG_ASSERT(initialized_);
     if (enabled_) {

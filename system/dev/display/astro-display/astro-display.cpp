@@ -382,8 +382,9 @@ zx_status_t AstroDisplay::SetupDisplayInterface() {
         return status;
     }
 
-    // Turn on backlight
+    // Turn on backlight and set to maximum
     backlight_->Enable();
+    backlight_->SetMax();
 
     {
         // Reset imported_images_ bitmap
