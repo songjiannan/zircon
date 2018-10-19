@@ -195,6 +195,8 @@ FUNCTION(_start)
     /* Read SCTLR */
     mrs     tmp, sctlr_el1
 
+    b   .
+
     /* Turn on the MMU */
     orr     tmp, tmp, #0x1
 

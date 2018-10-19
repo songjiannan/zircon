@@ -399,5 +399,13 @@ boot_shim_return_t boot_shim(void* device_tree) {
     uart_puts(" with ZBI ");
     uart_print_hex((uintptr_t)result.zbi);
     uart_puts("\n");
+
+uint32_t* uart_tx = (uint32_t*)(0x078af040);
+uint32_t* uart = (uint32_t*)(0x078af100);
+*uart_tx = 0x30;
+*uart_tx = 1;
+*uart = '3';
+
+
     return result;
 }

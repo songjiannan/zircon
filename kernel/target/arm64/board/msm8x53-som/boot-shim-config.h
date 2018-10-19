@@ -19,25 +19,15 @@ static const zbi_cpu_config_t cpu_config = {
 static const zbi_mem_range_t mem_config[] = {
     {
         .type = ZBI_MEM_RANGE_RAM,
-        .paddr = 0x40000000,
+        .paddr = 0x80000000,
         .length = 0x80000000, // 2GB
     },
     {
         .type = ZBI_MEM_RANGE_PERIPHERAL,
         // This is not the entire peripheral range, but enough to cover what we use in the kernel.
-        .paddr = 0x07000000,
-        .length = 0x0b100000 - 0x07000000,
+        .paddr = 0x00000000,
+        .length = 0x10000000,
     },
-
-/*
-    {
-        // Memory to reserve to avoid stomping on bootloader data.
-        .type = ZBI_MEM_RANGE_RESERVED,
-        .paddr = 0x40000000,
-        .length = 0x80000,
-    },
-*/
-/*
     {
         // other_ext_mem: other_ext_region@0
         .type = ZBI_MEM_RANGE_RESERVED,
@@ -62,10 +52,21 @@ static const zbi_mem_range_t mem_config[] = {
         .paddr = 0x8e700000,
         .length = 0x700000,
     },
+    {
+        // dfps_data_mem: dfps_data_mem@0
+        .type = ZBI_MEM_RANGE_RESERVED,
+        .paddr = 0x90000000,
+        .length = 0x1000,
+    },
+    {
+        // cont_splash_mem: splash_region@0
+        .type = ZBI_MEM_RANGE_RESERVED,
+        .paddr = 0x90001000,
+        .length = 0x13ff000,
+    },
 
 
-
-
+/*
 
 		other_ext_mem: other_ext_region@0 {
 			compatible = "removed-dma-pool";
@@ -163,7 +164,7 @@ static const dcfg_simple_t uart_driver = {
 static const dcfg_arm_gicv2_driver_t gicv2_driver = {
     .mmio_phys = 0x0b000000,
     .gicd_offset = 0x00000,
-    .gicc_offset = 0x10000,
+    .gicc_offset = 0x1000,
     .ipi_base = 5,
 };
 
