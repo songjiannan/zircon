@@ -195,7 +195,7 @@ FUNCTION(_start)
     /* Read SCTLR */
     mrs     tmp, sctlr_el1
 
-    b   .
+//hit this    b   .
 
     /* Turn on the MMU */
     orr     tmp, tmp, #0x1
@@ -205,26 +205,37 @@ FUNCTION(_start)
 .Lmmu_on_pc:
     isb
 
+
+//did get here    b   .
+
     // Map our current physical PC to the virtual PC and jump there.
     // PC = next_PC - __code_start + kernel_vaddr
     adr     tmp, .Lmmu_on_vaddr
     adr     tmp2, __code_start
     sub     tmp, tmp, tmp2
     add     tmp, tmp, kernel_vaddr
+
+// got here    b   .
+
     br      tmp
 
 .Lmmu_on_vaddr:
+    b   .
 
     /* Disable trampoline page-table in ttbr0 */
     movlit  tmp, MMU_TCR_FLAGS_KERNEL
     msr     tcr_el1, tmp
     isb
 
+// didn't    b   .
+
     /* Invalidate TLB */
     tlbi    vmalle1
     isb
 
     cbnz    cpuid, .Lsecondary_boot
+
+// didn't get here    b   .
 
     // set up the boot stack for real
     adr_global tmp, boot_cpu_kstack_end
@@ -243,12 +254,16 @@ FUNCTION(_start)
     // set the per cpu pointer for cpu 0
     adr_global x18, arm64_percpu_array
 
+// didn't hit this    b   .
+
     // Choose a good (ideally random) stack-guard value as early as possible.
     bl      choose_stack_guard
     mrs     tmp, tpidr_el1
     str     x0, [tmp, #ZX_TLS_STACK_GUARD_OFFSET]
     // Don't leak the value to other code.
     mov     x0, xzr
+
+// didn't hit this    b   .
 
     bl  lk_main
     b   .
