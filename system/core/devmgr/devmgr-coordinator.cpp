@@ -1020,7 +1020,11 @@ static zx_status_t dc_remove_device(device_t* dev, bool forced) {
                     log(DEVLC, "devcoord: bus device %p name='%s' is unbound\n",
                         parent, parent->name);
 
+                    // Delay 5 seconds before relaunching the devhost so debug log is not
+                    // overwhelmed by repeated crashes.
                     //TODO: introduce timeout, exponential backoff
+                    sleep(5);
+
                     queue_work(&parent->work, dc_work::Op::kDeviceAdded, 0);
                 }
             }
