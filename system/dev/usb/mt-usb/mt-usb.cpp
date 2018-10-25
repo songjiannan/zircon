@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "mt-usb-dci.h"
+#include "mt-usb.h"
 
 #include <assert.h>
 #include <stdint.h>
@@ -23,9 +23,9 @@
 #include <fbl/algorithm.h>
 #include <fbl/unique_ptr.h>
 
-namespace mt_usb_dci {
+namespace mt_usb {
 
-zx_status_t MtUsbDci::Create(zx_device_t* parent) {
+zx_status_t MtUsb::Create(zx_device_t* parent) {
     pdev_protocol_t pdev;
 
     auto status = device_get_protocol(parent, ZX_PROTOCOL_PDEV, &pdev);
@@ -34,22 +34,22 @@ zx_status_t MtUsbDci::Create(zx_device_t* parent) {
     }
 
     fbl::AllocChecker ac;
-    auto dci = fbl::make_unique_checked<MtUsbDci>(&ac, parent, &pdev);
+    auto mt_usb = fbl::make_unique_checked<MtUsb>(&ac, parent, &pdev);
     if (!ac.check()) {
         return ZX_ERR_NO_MEMORY;
     }
 
-    status = dci->Init();
+    status = mt_usb->Init();
     if (status != ZX_OK) {
         return status;
     }
 
     // devmgr is now in charge of the device.
-    __UNUSED auto* dummy = dci.release();
+    __UNUSED auto* dummy = mt_usb.release();
     return ZX_OK;
 }
 
-zx_status_t MtUsbDci::Init() {
+zx_status_t MtUsb::Init() {
     auto status = pdev_get_bti(&pdev_, 0, bti_.reset_and_get_address());
     if (status != ZX_OK) {
         return status;
@@ -72,22 +72,22 @@ zx_status_t MtUsbDci::Init() {
 
     int rc = thrd_create_with_name(&irq_thread_,
                                    [](void* arg) -> int {
-                                       return reinterpret_cast<MtUsbDci*>(arg)->IrqThread();
+                                       return reinterpret_cast<MtUsb*>(arg)->IrqThread();
                                    },
                                    reinterpret_cast<void*>(this),
-                                   "mt-usb-dci-irq-thread");
+                                   "mt-usb-irq-thread");
     if (rc != thrd_success) {
         return ZX_ERR_INTERNAL;
     }
 
-    status = DdkAdd("mt-usb-dci");
+    status = DdkAdd("mt-usb");
     if (status != ZX_OK) {
         return status;
     }
     return ZX_OK;
 }
 
-void MtUsbDci::InitPhy() {
+void MtUsb::InitPhy() {
     volatile uint8_t* regs = static_cast<uint8_t*>(phy_mmio_.vaddr);
 
     /*
@@ -119,7 +119,7 @@ void MtUsbDci::InitPhy() {
     set_bitsb(0x3E, regs + 0x6d);
 }
 
-int MtUsbDci::IrqThread() {
+int MtUsb::IrqThread() {
     InitPhy();
 
     while (true) {
@@ -134,54 +134,54 @@ int MtUsbDci::IrqThread() {
     }
 }
 
-void MtUsbDci::DdkUnbind() {
+void MtUsb::DdkUnbind() {
     irq_.destroy();
     thrd_join(irq_thread_, nullptr);
 }
 
-void MtUsbDci::DdkRelease() {
+void MtUsb::DdkRelease() {
     mmio_buffer_release(&usb_mmio_);
     mmio_buffer_release(&phy_mmio_);
     delete this;
 }
 
- void MtUsbDci::UsbDciRequestQueue(usb_request_t* req) {
+ void MtUsb::UsbDciRequestQueue(usb_request_t* req) {
  printf("%s\n", __func__);
  }
  
- zx_status_t MtUsbDci::UsbDciSetInterface(const usb_dci_interface_t* interface) {
+ zx_status_t MtUsb::UsbDciSetInterface(const usb_dci_interface_t* interface) {
     memcpy(&dci_intf_, interface, sizeof(dci_intf_));
     return ZX_OK;
 }
 
- zx_status_t MtUsbDci::UsbDciConfigEp(const usb_endpoint_descriptor_t* ep_desc, const
+ zx_status_t MtUsb::UsbDciConfigEp(const usb_endpoint_descriptor_t* ep_desc, const
                             usb_ss_ep_comp_descriptor_t* ss_comp_desc) {
     return ZX_OK;
 }
 
- zx_status_t MtUsbDci::UsbDciDisableEp(uint8_t ep_address) {
+ zx_status_t MtUsb::UsbDciDisableEp(uint8_t ep_address) {
     return ZX_OK;
 }
 
- zx_status_t MtUsbDci::UsbDciEpSetStall(uint8_t ep_address) {
+ zx_status_t MtUsb::UsbDciEpSetStall(uint8_t ep_address) {
     return ZX_OK;
 }
 
- zx_status_t MtUsbDci::UsbDciEpClearStall(uint8_t ep_address) {
+ zx_status_t MtUsb::UsbDciEpClearStall(uint8_t ep_address) {
     return ZX_OK;
 }
 
- zx_status_t MtUsbDci::UsbDciGetBti(zx_handle_t* out_bti) {
+ zx_status_t MtUsb::UsbDciGetBti(zx_handle_t* out_bti) {
     *out_bti = bti_.get();
     return ZX_OK;
 }
 
-size_t MtUsbDci::UsbDciGetRequestSize() {
+size_t MtUsb::UsbDciGetRequestSize() {
     return 0;
 }
 
-} // namespace mt_usb_dci
+} // namespace mt_usb
 
-zx_status_t mt_usb_dci_bind(void* ctx, zx_device_t* parent) {
-    return mt_usb_dci::MtUsbDci::Create(parent);
+zx_status_t mt_usb_bind(void* ctx, zx_device_t* parent) {
+    return mt_usb::MtUsb::Create(parent);
 }

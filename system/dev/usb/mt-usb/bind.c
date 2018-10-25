@@ -6,15 +6,15 @@
 #include <ddk/driver.h>
 #include <ddk/platform-defs.h>
 
-extern zx_status_t mt_usb_dci_bind(void* ctx, zx_device_t* parent);
+extern zx_status_t mt_usb_bind(void* ctx, zx_device_t* parent);
 
-static zx_driver_ops_t mt_usb_dci_driver_ops = {
+static zx_driver_ops_t mt_usb_driver_ops = {
     .version = DRIVER_OPS_VERSION,
-    .bind = mt_usb_dci_bind,
+    .bind = mt_usb_bind,
 };
 
-ZIRCON_DRIVER_BEGIN(mt_usb_dci, mt_usb_dci_driver_ops, "zircon", "0.1", 3)
+ZIRCON_DRIVER_BEGIN(mt_usb, mt_usb_driver_ops, "zircon", "0.1", 3)
     BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_PDEV),
     BI_ABORT_IF(NE, BIND_PLATFORM_DEV_VID, PDEV_VID_MEDIATEK),
-    BI_MATCH_IF(EQ, BIND_PLATFORM_DEV_DID, PDEV_DID_MEDIATEK_USB_DCI),
-ZIRCON_DRIVER_END(mt_usb_dci)
+    BI_MATCH_IF(EQ, BIND_PLATFORM_DEV_DID, PDEV_DID_MEDIATEK_USB),
+ZIRCON_DRIVER_END(mt_usb)

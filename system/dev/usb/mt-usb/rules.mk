@@ -10,7 +10,7 @@ MODULE_TYPE := driver
 
 MODULE_SRCS := \
     $(LOCAL_DIR)/bind.c \
-    $(LOCAL_DIR)/mt-usb-dci.cpp \
+    $(LOCAL_DIR)/mt-usb.cpp \
 
 MODULE_STATIC_LIBS := \
     system/ulib/ddk \

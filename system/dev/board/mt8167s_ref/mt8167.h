@@ -24,7 +24,7 @@ namespace board_mt8167 {
 enum {
     BTI_BOARD,
     BTI_EMMC,
-    BTI_USB_DCI,
+    BTI_USB,
 };
 
 class Mt8167;

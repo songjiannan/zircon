@@ -15,15 +15,15 @@
 
 #include <threads.h>
 
-namespace mt_usb_dci {
+namespace mt_usb {
 
-class MtUsbDci;
-using MtUsbDciType = ddk::Device<MtUsbDci, ddk::Unbindable>;
+class MtUsb;
+using MtUsbType = ddk::Device<MtUsb, ddk::Unbindable>;
 
-class MtUsbDci : public MtUsbDciType, public ddk::UsbDciProtocol<MtUsbDci> {
+class MtUsb : public MtUsbType, public ddk::UsbDciProtocol<MtUsb> {
 public:
-    explicit MtUsbDci(zx_device_t* parent, pdev_protocol_t* pdev)
-        : MtUsbDciType(parent), pdev_(*pdev) {}
+    explicit MtUsb(zx_device_t* parent, pdev_protocol_t* pdev)
+        : MtUsbType(parent), pdev_(*pdev) {}
 
     static zx_status_t Create(zx_device_t* parent);
 
@@ -43,7 +43,7 @@ public:
      size_t UsbDciGetRequestSize();
 
 private:
-    DISALLOW_COPY_ASSIGN_AND_MOVE(MtUsbDci);
+    DISALLOW_COPY_ASSIGN_AND_MOVE(MtUsb);
 
     zx_status_t Init();
     void InitPhy();
@@ -60,8 +60,8 @@ private:
     thrd_t irq_thread_;
 };
 
-} // namespace mt_usb_dci
+} // namespace mt_usb
 
 __BEGIN_CDECLS
-zx_status_t mt_usb_dci_bind(void* ctx, zx_device_t* parent);
+zx_status_t mt_usb_bind(void* ctx, zx_device_t* parent);
 __END_CDECLS
