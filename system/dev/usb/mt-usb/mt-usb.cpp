@@ -120,6 +120,40 @@ void MtUsb::InitPhy() {
     clr_bitsb(0x10, regs + 0x6c);
     set_bitsb(0x2E, regs + 0x6c);
     set_bitsb(0x3E, regs + 0x6d);
+
+
+	/* clean PUPD_BIST_EN */
+	/* PUPD_BIST_EN = 1'b0 */
+	/* PMIC will use it to detect charger type */
+	clr_bitsb(0x10, regs + 0x1d);
+
+	/* force_uart_en = 1'b0 */
+	clr_bitsb(0x04, regs + 0x6b);
+	/* RG_UART_EN = 1'b0 */
+	clr_bitsb(0x01, regs + 0x6e);
+	/* force_uart_en = 1'b0 */
+	clr_bitsb(0x04, regs + 0x6a);
+
+    clr_bitsb(0x03, regs + 0x21);
+
+	clr_bitsb(0xf4, regs + 0x68);
+
+	/* RG_DATAIN[3:0] = 4'b0000 */
+	clr_bitsb(0x3c, regs + 0x69);
+
+	clr_bitsb(0xba, regs + 0x6a);
+
+	/* RG_USB20_BC11_SW_EN = 1'b0 */
+	clr_bitsb(0x80, regs + 0x1a);
+	/* RG_USB20_OTG_VBUSSCMP_EN = 1'b1 */
+	set_bitsb(0x10, regs + 0x1a);
+
+	usleep(800);
+
+	/* force enter device mode */
+	//USBPHY_CLR8(0x6c, 0x10);
+	//USBPHY_SET8(0x6c, 0x2E);
+	//USBPHY_SET8(0x6d, 0x3E);
 }
 
 int MtUsb::IrqThread() {
