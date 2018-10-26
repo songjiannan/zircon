@@ -58,15 +58,18 @@ zx_status_t MtUsb::Init() {
         return status;
     }
 
-    status = pdev_map_mmio_buffer2(&pdev_, 0, ZX_CACHE_POLICY_UNCACHED_DEVICE, &usb_mmio_);
+    mmio_buffer_t mmio;
+    status = pdev_map_mmio_buffer2(&pdev_, 0, ZX_CACHE_POLICY_UNCACHED_DEVICE, &mmio);
     if (status != ZX_OK) {
         return status;
     }
+    usb_mmio_ = ddk::MmioBuffer(mmio);
 
-    status = pdev_map_mmio_buffer2(&pdev_, 1, ZX_CACHE_POLICY_UNCACHED_DEVICE, &phy_mmio_);
+    status = pdev_map_mmio_buffer2(&pdev_, 1, ZX_CACHE_POLICY_UNCACHED_DEVICE, &mmio);
     if (status != ZX_OK) {
         return status;
     }
+    phy_mmio_ = ddk::MmioBuffer(mmio);
 
     status = pdev_map_interrupt(&pdev_, 0, irq_.reset_and_get_address());
     if (status != ZX_OK) {
@@ -91,7 +94,7 @@ zx_status_t MtUsb::Init() {
 }
 
 void MtUsb::InitPhy() {
-    volatile uint8_t* regs = static_cast<uint8_t*>(phy_mmio_.vaddr);
+    volatile uint8_t* regs = static_cast<uint8_t*>(phy_mmio_->get());
 
     /*
      * swtich to USB function.
@@ -122,42 +125,49 @@ void MtUsb::InitPhy() {
     set_bitsb(0x3E, regs + 0x6d);
 
 
-	/* clean PUPD_BIST_EN */
-	/* PUPD_BIST_EN = 1'b0 */
-	/* PMIC will use it to detect charger type */
-	clr_bitsb(0x10, regs + 0x1d);
+    /* clean PUPD_BIST_EN */
+    /* PUPD_BIST_EN = 1'b0 */
+    /* PMIC will use it to detect charger type */
+    clr_bitsb(0x10, regs + 0x1d);
 
-	/* force_uart_en = 1'b0 */
-	clr_bitsb(0x04, regs + 0x6b);
-	/* RG_UART_EN = 1'b0 */
-	clr_bitsb(0x01, regs + 0x6e);
-	/* force_uart_en = 1'b0 */
-	clr_bitsb(0x04, regs + 0x6a);
+    /* force_uart_en = 1'b0 */
+    clr_bitsb(0x04, regs + 0x6b);
+    /* RG_UART_EN = 1'b0 */
+    clr_bitsb(0x01, regs + 0x6e);
+    /* force_uart_en = 1'b0 */
+    clr_bitsb(0x04, regs + 0x6a);
 
     clr_bitsb(0x03, regs + 0x21);
 
-	clr_bitsb(0xf4, regs + 0x68);
+    clr_bitsb(0xf4, regs + 0x68);
 
-	/* RG_DATAIN[3:0] = 4'b0000 */
-	clr_bitsb(0x3c, regs + 0x69);
+    /* RG_DATAIN[3:0] = 4'b0000 */
+    clr_bitsb(0x3c, regs + 0x69);
 
-	clr_bitsb(0xba, regs + 0x6a);
+    clr_bitsb(0xba, regs + 0x6a);
 
-	/* RG_USB20_BC11_SW_EN = 1'b0 */
-	clr_bitsb(0x80, regs + 0x1a);
-	/* RG_USB20_OTG_VBUSSCMP_EN = 1'b1 */
-	set_bitsb(0x10, regs + 0x1a);
+    /* RG_USB20_BC11_SW_EN = 1'b0 */
+    clr_bitsb(0x80, regs + 0x1a);
+    /* RG_USB20_OTG_VBUSSCMP_EN = 1'b1 */
+    set_bitsb(0x10, regs + 0x1a);
 
-	usleep(800);
+    usleep(800);
 
-	/* force enter device mode */
-	//USBPHY_CLR8(0x6c, 0x10);
-	//USBPHY_SET8(0x6c, 0x2E);
-	//USBPHY_SET8(0x6d, 0x3E);
+    /* force enter device mode */
+    //USBPHY_CLR8(0x6c, 0x10);
+    //USBPHY_SET8(0x6c, 0x2E);
+    //USBPHY_SET8(0x6d, 0x3E);
 }
 
 int MtUsb::IrqThread() {
     InitPhy();
+
+    // Enable HSDMA interrupts here?
+
+    // Enable USB level 1 interrupts
+//  usb_l1intm = (TX_INT_STATUS | RX_INT_STATUS | USBCOM_INT_STATUS | DMA_INT_STATUS);
+//  writel(usb_l1intm, USB_L1INTM);
+
 
     while (true) {
         auto status = irq_.wait(nullptr);
@@ -177,8 +187,6 @@ void MtUsb::DdkUnbind() {
 }
 
 void MtUsb::DdkRelease() {
-    mmio_buffer_release(&usb_mmio_);
-    mmio_buffer_release(&phy_mmio_);
     delete this;
 }
 

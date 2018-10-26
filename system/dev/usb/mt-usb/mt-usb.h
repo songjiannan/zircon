@@ -9,6 +9,7 @@
 #include <ddktl/mmio.h>
 #include <ddktl/protocol/usb-dci.h>
 #include <fbl/macros.h>
+#include <fbl/optional.h>
 #include <fbl/unique_ptr.h>
 #include <lib/zx/handle.h>
 #include <lib/zx/interrupt.h>
@@ -53,8 +54,8 @@ private:
     usb_dci_interface_t dci_intf_ = {};
     zx::handle bti_;
 
-    mmio_buffer_t usb_mmio_;
-    mmio_buffer_t phy_mmio_;
+    fbl::optional<ddk::MmioBuffer> usb_mmio_;
+    fbl::optional<ddk::MmioBuffer> phy_mmio_;
 
     zx::interrupt irq_;
     thrd_t irq_thread_;
