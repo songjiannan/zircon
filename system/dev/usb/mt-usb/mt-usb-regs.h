@@ -315,4 +315,57 @@ public:
     static auto Get() { return hwreg::RegisterAddr<EPINFO>(0x78); }
 };
 
+// USB Level 1 Interrupt Status Register
+class USB_L1INTS : public hwreg::RegisterBase<USB_L1INTS, uint32_t> {
+public:
+    DEF_BIT(11, powerdwn);
+    DEF_BIT(10, drvvbus);
+    DEF_BIT(9, iddig);
+    DEF_BIT(8, vbusvalid);
+    DEF_BIT(7, dpdm);
+    DEF_BIT(6, qhif);
+    DEF_BIT(5, qint);
+    DEF_BIT(4, psr);
+    DEF_BIT(3, dma);
+    DEF_BIT(2, usbcom);
+    DEF_BIT(1, rx);
+    DEF_BIT(0, tx);
+    static auto Get() { return hwreg::RegisterAddr<USB_L1INTS>(0xa0); }
+};
+
+// USB Level 1 Interrupt Mask Register
+class USB_L1INTM : public hwreg::RegisterBase<USB_L1INTM, uint32_t> {
+public:
+    DEF_BIT(11, powerdwn);
+    DEF_BIT(10, drvvbus);
+    DEF_BIT(9, iddig);
+    DEF_BIT(8, vbusvalid);
+    DEF_BIT(7, dpdm);
+    DEF_BIT(6, qhif);
+    DEF_BIT(5, qint);
+    DEF_BIT(4, psr);
+    DEF_BIT(3, dma);
+    DEF_BIT(2, usbcom);
+    DEF_BIT(1, rx);
+    DEF_BIT(0, tx);
+    static auto Get() { return hwreg::RegisterAddr<USB_L1INTM>(0xa4); }
+};
+
+// USB Level 1 Interrupt Polarity Register
+class USB_L1INTP : public hwreg::RegisterBase<USB_L1INTP, uint32_t> {
+public:
+    DEF_BIT(11, powerdwn);
+    DEF_BIT(10, drvvbus);
+    DEF_BIT(9, iddig);
+    DEF_BIT(8, vbusvalid);
+    static auto Get() { return hwreg::RegisterAddr<USB_L1INTP>(0xa8); }
+};
+
+// USB Level 1 Interrupt Control Register
+class USB_L1INTC : public hwreg::RegisterBase<USB_L1INTC, uint32_t> {
+public:
+    DEF_BIT(0, usb_int_sync);
+    static auto Get() { return hwreg::RegisterAddr<USB_L1INTC>(0xac); }
+};
+
 } // namespace mt_usb
