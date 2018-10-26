@@ -23,6 +23,9 @@
 #include <fbl/algorithm.h>
 #include <fbl/unique_ptr.h>
 
+#include "mt-usb-regs.h"
+#include "mt-usb-phy-regs.h"
+
 namespace mt_usb {
 
 zx_status_t MtUsb::Create(zx_device_t* parent) {
