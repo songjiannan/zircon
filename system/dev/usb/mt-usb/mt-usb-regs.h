@@ -130,6 +130,52 @@ public:
     static auto Get() { return hwreg::RegisterAddr<TESTMODE>(0x0f); }
 };
 
+// TXMAP Register
+class TXMAP : public hwreg::RegisterBase<TXMAP, uint16_t> {
+public:
+    DEF_FIELD(12, 11, m_1);
+    DEF_FIELD(10, 0, maximum_payload_transaction);
+    static auto Get() { return hwreg::RegisterAddr<TXMAP>(0x10); }
+};
+
+// TX CSR Register (peripheral mode)
+class TXCSR_PERI : public hwreg::RegisterBase<TXCSR_PERI, uint16_t, hwreg::EnablePrinter> {
+public:
+    DEF_BIT(15, autoset);
+    DEF_BIT(14, iso);
+    DEF_BIT(12, dmareqen);
+    DEF_BIT(11, frcdatatog);
+    DEF_BIT(10, dmareqmode);
+    DEF_BIT(8, settxpktrdy_twice);
+    DEF_BIT(7, incomptx);
+    DEF_BIT(6, clrdatatog);
+    DEF_BIT(5, sentstall);
+    DEF_BIT(4, sendstall);
+    DEF_BIT(3, flushfifo);
+    DEF_BIT(2, underrun);
+    DEF_BIT(1, fifoempty);
+    DEF_BIT(0, txpktrdy);
+    static auto Get() { return hwreg::RegisterAddr<TXCSR_PERI>(0x12); }
+};
+
+// TX CSR Register (host mode)
+class TXCSR_HOST : public hwreg::RegisterBase<TXCSR_HOST, uint16_t> {
+public:
+    DEF_BIT(15, autoset);
+    DEF_BIT(12, dmareqen);
+    DEF_BIT(11, frcdatatog);
+    DEF_BIT(10, dmareqmode);
+    DEF_BIT(8, settxpktrdy_twice);
+    DEF_BIT(7, naktimeout_incomptx);
+    DEF_BIT(6, clrdatatog);
+    DEF_BIT(5, rxstall);
+    DEF_BIT(3, flushfifo);
+    DEF_BIT(2, error);
+    DEF_BIT(1, fifonotempty);
+    DEF_BIT(0, txpktrdy);
+    static auto Get() { return hwreg::RegisterAddr<TXCSR_HOST>(0x12); }
+};
+
 // RXMAP Register
 class RXMAP : public hwreg::RegisterBase<RXMAP, uint16_t> {
 public:

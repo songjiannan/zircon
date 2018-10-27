@@ -189,6 +189,14 @@ void MtUsb::HandleReset() {
     // TODO mt_udc_rxtxmap_recover()
 }
 
+void MtUsb::HandleEp0() {
+    auto* mmio = usb_mmio();
+
+    printf("%s\n", __func__);
+    auto txcsr = TXCSR_PERI::Get().ReadFrom(mmio);
+    txcsr.Print();
+}
+
 int MtUsb::IrqThread() {
     auto* mmio = usb_mmio();
 
@@ -201,7 +209,6 @@ int MtUsb::IrqThread() {
     InitPhy();
 
     // Enable HSDMA interrupts here?
-
 
     // Turn power back on
     POWER_PERI::Get()
@@ -279,6 +286,10 @@ zxlogf(INFO, "%s: Wait for Interrupt\n", __func__);
         if (intrusb.reset()) {
             printf("    RESET\n");
             HandleReset();
+        }
+
+        if (intrtx.ep_tx() & (1 << 0)) {
+            HandleEp0();
         }
 
         if (intrusb.discon()) printf("    DISCONNECT\n");

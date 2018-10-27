@@ -52,6 +52,7 @@ private:
 
     void HandleSuspend();
     void HandleReset();
+    void HandleEp0();
 
     inline ddk::MmioBuffer* usb_mmio() {
         return &*usb_mmio_;
