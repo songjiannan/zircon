@@ -17,7 +17,7 @@ public:
 };
 
 // Power Management Register (peripheral mode)
-class POWER_PERI : public hwreg::RegisterBase<POWER_PERI, uint8_t> {
+class POWER_PERI : public hwreg::RegisterBase<POWER_PERI, uint8_t, hwreg::EnablePrinter> {
 public:
     DEF_BIT(7, isoupdate);
     DEF_BIT(6, softconn);
@@ -43,7 +43,7 @@ public:
 };
 
 // TX Interrupt Status Register
-class INTRTX : public hwreg::RegisterBase<INTRTX, uint16_t> {
+class INTRTX : public hwreg::RegisterBase<INTRTX, uint16_t, hwreg::EnablePrinter> {
 public:
     // bit field, one bit per TX endpoint
     DEF_FIELD(7, 0, ep_tx);
@@ -51,7 +51,7 @@ public:
 };
 
 // RX Interrupt Status Register
-class INTRRX : public hwreg::RegisterBase<INTRRX, uint16_t> {
+class INTRRX : public hwreg::RegisterBase<INTRRX, uint16_t, hwreg::EnablePrinter> {
 public:
     // bit field, one bit per RX endpoint (endpoints 1 - 7)
     DEF_FIELD(7, 0, ep_rx);
@@ -75,14 +75,14 @@ public:
 };
 
 // Common USB Interrupt Register
-class INTRUSB : public hwreg::RegisterBase<INTRUSB, uint8_t> {
+class INTRUSB : public hwreg::RegisterBase<INTRUSB, uint8_t, hwreg::EnablePrinter> {
 public:
     DEF_BIT(7, vbuserror);
     DEF_BIT(6, sessreq);
     DEF_BIT(5, discon);
     DEF_BIT(4, conn);
     DEF_BIT(3, sof);
-    DEF_BIT(2, reset_babble);
+    DEF_BIT(2, reset);
     DEF_BIT(1, resume);
     DEF_BIT(0, suspend);
     static auto Get() { return hwreg::RegisterAddr<INTRUSB>(0x0a); }
@@ -96,7 +96,7 @@ public:
     DEF_BIT(5, discon_e);
     DEF_BIT(4, conn_e);
     DEF_BIT(3, sof_e);
-    DEF_BIT(2, reset_babble_e);
+    DEF_BIT(2, reset_e);
     DEF_BIT(1, resume_e);
     DEF_BIT(0, suspend_e);
     static auto Get() { return hwreg::RegisterAddr<INTRUSBE>(0x0b); }
@@ -305,6 +305,20 @@ class HWSVERS : public hwreg::RegisterBase<HWSVERS, uint16_t> {
 public:
     DEF_FIELD(7, 0, usb_sub_version_code);
     static auto Get() { return hwreg::RegisterAddr<HWSVERS>(0x6e); }
+};
+
+// Bus Performance Register 3
+class BUSPERF3 : public hwreg::RegisterBase<BUSPERF3, uint16_t> {
+public:
+    DEF_BIT(11, vbuserr_mode);
+    DEF_BIT(9, flush_fifo_en);
+    DEF_BIT(7, noise_still_sof);
+    DEF_BIT(6, bab_cl_en);
+    DEF_BIT(3, undo_srpfix);
+    DEF_BIT(2, otg_deglitch_disable);
+    DEF_BIT(1, ep_swrst);
+    DEF_BIT(0, disusbreset);
+    static auto Get() { return hwreg::RegisterAddr<BUSPERF3>(0x74); }
 };
 
 // Number of TX and RX Register

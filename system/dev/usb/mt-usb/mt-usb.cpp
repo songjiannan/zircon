@@ -95,7 +95,7 @@ zx_status_t MtUsb::Init() {
 
 void MtUsb::InitPhy() {
     volatile uint8_t* regs = static_cast<uint8_t*>(phy_mmio_->get());
-
+printf("PHY regs: %p\n", regs);
     /*
      * swtich to USB function.
      * (system register, force ip into usb mode).
@@ -159,15 +159,100 @@ void MtUsb::InitPhy() {
     //USBPHY_SET8(0x6d, 0x3E);
 }
 
+void MtUsb::HandleSuspend() {
+}
+
+void MtUsb::HandleReset() {
+    auto* mmio = usb_mmio();
+
+    address_ = 0;
+
+/* ???
+    INTRTXE::Get()
+        .FromValue(0)
+        .WriteTo(mmio);
+    INTRRXE::Get()
+        .FromValue(0)
+        .WriteTo(mmio);
+*/
+
+    BUSPERF3::Get()
+        .FromValue(0)
+        .set_ep_swrst(1)
+        .set_disusbreset(1)
+        .WriteTo(mmio);
+
+    // TODO flush fifos
+
+    POWER_PERI::Get().ReadFrom(mmio).Print();
+
+    // TODO mt_udc_rxtxmap_recover()
+}
+
 int MtUsb::IrqThread() {
+    auto* mmio = usb_mmio();
+
+    // Turn off power first
+    POWER_PERI::Get()
+        .ReadFrom(mmio)
+        .set_softconn(0)
+        .WriteTo(mmio);
+
     InitPhy();
 
     // Enable HSDMA interrupts here?
 
-    // Enable USB level 1 interrupts
-//  usb_l1intm = (TX_INT_STATUS | RX_INT_STATUS | USBCOM_INT_STATUS | DMA_INT_STATUS);
-//  writel(usb_l1intm, USB_L1INTM);
 
+    // Turn power back on
+    POWER_PERI::Get()
+        .ReadFrom(mmio)
+        .set_softconn(1)
+        .set_enablesuspendm(1)
+        .set_hsenab(1)
+        .WriteTo(mmio);
+
+    // Clear interrupts first
+    INTRTX::Get()
+        .FromValue(0xffff)
+        .WriteTo(mmio);
+    INTRRX::Get()
+        .FromValue(0xffff)
+        .WriteTo(mmio);
+    INTRUSB::Get()
+        .FromValue(0xff)
+        .WriteTo(mmio);
+
+    // Enable interrupts
+    uint16_t intrtx = (1 << 0);
+    uint16_t intrrx = (1 << 0);
+    
+    INTRTXE::Get()
+        .FromValue(intrtx)
+        .WriteTo(mmio);
+    INTRRXE::Get()
+        .FromValue(intrrx)
+        .WriteTo(mmio);
+  
+    // Enable USB interrupts
+    INTRUSBE::Get()
+        .FromValue(0)
+        .set_discon_e(1)
+        .set_conn_e(1)
+        .set_reset_e(1)
+        .set_resume_e(1)
+        .set_suspend_e(1)
+        .WriteTo(mmio);
+
+    // Enable USB level 1 interrupts
+    USB_L1INTM::Get()
+        .FromValue(0)
+        .set_tx(1)
+        .set_rx(1)
+        .set_usbcom(1)
+        .set_dma(1)
+        .WriteTo(mmio);
+
+zxlogf(INFO, "%s: Wait for Interrupt\n", __func__);
 
     while (true) {
         auto status = irq_.wait(nullptr);
@@ -178,6 +263,27 @@ int MtUsb::IrqThread() {
             return -1;
         }
         zxlogf(INFO, "%s: got interrupt!\n", __func__);
+
+        // Write back these registers to acknowledge the interrupts
+        auto intrtx = INTRTX::Get().ReadFrom(mmio).WriteTo(mmio);
+        auto intrrx = INTRRX::Get().ReadFrom(mmio).WriteTo(mmio);
+        auto intrusb = INTRUSB::Get().ReadFrom(mmio).WriteTo(mmio);
+
+        intrtx.Print();
+        intrrx.Print();
+
+        if (intrusb.suspend()) {
+            printf("    SUSPEND\n");
+            HandleSuspend();
+        }
+        if (intrusb.reset()) {
+            printf("    RESET\n");
+            HandleReset();
+        }
+
+        if (intrusb.discon()) printf("    DISCONNECT\n");
+        if (intrusb.conn()) printf("    CONNECT\n");
+        if (intrusb.resume()) printf("    RESUME\n");
     }
 }
 

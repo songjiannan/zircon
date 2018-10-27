@@ -4,7 +4,7 @@
 
 #include <ddk/debug.h>
 #include <ddk/device.h>
-#include <ddk/io-buffer.h>
+#include <ddk/mmio-buffer.h>
 #include <ddk/platform-defs.h>
 #include <hw/reg.h>
 #include <lib/zx/handle.h>
@@ -29,7 +29,7 @@ static const pbus_mmio_t usb_mmios[] = {
 static const pbus_irq_t usb_irqs[] = {
     {
         .irq = MT8167_IRQ_USB_MCU,
-        .mode = ZX_INTERRUPT_MODE_EDGE_HIGH,
+        .mode = ZX_INTERRUPT_MODE_LEVEL_HIGH,
     },
 };
 
@@ -55,7 +55,26 @@ static pbus_dev_t usb_dev = [](){
 }();
 
 zx_status_t Mt8167::UsbInit() {
-    auto status = pbus_.DeviceAdd(&usb_dev);
+    // TODO: move to clock driver when we have one
+    mmio_buffer_t buf;
+    zx_status_t status;
+
+    status = mmio_buffer_init_physical(&buf, MT8167_XO_BASE, MT8167_XO_SIZE,
+                                       get_root_resource(), ZX_CACHE_POLICY_UNCACHED_DEVICE);
+    if (status != ZX_OK) {
+        return status;
+    }
+
+    volatile uint32_t* xo_base = static_cast<uint32_t*>(buf.vaddr);
+
+#define CLK_GATING_CTRL1_CLR (0x084 / sizeof(uint32_t))
+#define SET_USB_SW_CG (1U << 13)
+
+	writel(SET_USB_SW_CG, xo_base + CLK_GATING_CTRL1_CLR);
+
+    mmio_buffer_release(&buf);
+
+    status = pbus_.DeviceAdd(&usb_dev);
     if (status != ZX_OK) {
         zxlogf(ERROR, "%s: DeviceAdd failed %d\n", __func__, status);
         return status;

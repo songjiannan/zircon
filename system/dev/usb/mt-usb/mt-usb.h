@@ -50,6 +50,16 @@ private:
     void InitPhy();
     int IrqThread();
 
+    void HandleSuspend();
+    void HandleReset();
+
+    inline ddk::MmioBuffer* usb_mmio() {
+        return &*usb_mmio_;
+    }
+    inline ddk::MmioBuffer* phy_mmio() {
+        return &*phy_mmio_;
+    }
+
     pdev_protocol_t pdev_;
     usb_dci_interface_t dci_intf_ = {};
     zx::handle bti_;
@@ -59,6 +69,9 @@ private:
 
     zx::interrupt irq_;
     thrd_t irq_thread_;
+
+    // Address assigned to us by the host.
+    uint8_t address_ = 0;
 };
 
 } // namespace mt_usb
