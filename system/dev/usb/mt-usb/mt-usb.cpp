@@ -198,22 +198,15 @@ void MtUsb::HandleEp0() {
 
     INDEX::Get().FromValue(0).WriteTo(mmio);
 
-auto txcsr = TXCSR_PERI::Get().ReadFrom(mmio);
-auto rxcsr = RXCSR_PERI::Get().ReadFrom(mmio);
-printf("TXCSR\n");
-txcsr.Print();
-printf("RXCSR\n");
-rxcsr.Print();
-
     // Loop until we explicitly return from this function.
     // This allows us to handle multiple state transitions at once when appropriate.
     while (true) {
         switch (ep0_state_) {
         case EP0_IDLE: {
 printf("case EP0_IDLE\n");
-//            auto txcsr = TXCSR_PERI::Get().ReadFrom(mmio);
+            auto csr0 = CSR0_PERI::Get().ReadFrom(mmio);
             // For some reason the txcsr bit can mean RX packet ready for endpoint zero.
-            if (!txcsr.txpktrdy()) {
+            if (!csr0.rxpktrdy()) {
                 return;
             }
 
@@ -226,6 +219,12 @@ printf("case EP0_IDLE\n");
             zxlogf(INFO, "SETUP bmRequestType %x bRequest %u wValue %u wIndex %u wLength %u\n",
                    cur_setup_.bmRequestType, cur_setup_.bRequest, cur_setup_.wValue,
                    cur_setup_.wIndex, cur_setup_.wLength);
+
+            CSR0_PERI::Get()
+                .ReadFrom(mmio)
+                .set_serviced_rxpktrdy(1)
+                .set_dataend(cur_setup_.wLength == 0)
+                .WriteTo(mmio);
             
             if (cur_setup_.wLength > 0 && (cur_setup_.bmRequestType & USB_DIR_MASK) == USB_DIR_OUT) {
                 ep0_state_ = EP0_READ;
@@ -265,8 +264,8 @@ printf("case EP0_READ\n");
             break;
         case EP0_WRITE: {
 printf("case EP0_WRITE\n");
-//            auto txcsr = TXCSR_PERI::Get().ReadFrom(mmio);
-            if (!txcsr.txpktrdy()) {
+            auto csr0 = CSR0_PERI::Get().ReadFrom(mmio);
+            if (csr0.txpktrdy()) {
 printf("EP0_WRITE not ready\n");
                 return;
             }
@@ -279,14 +278,14 @@ printf("FifoWrite %zu\n", count);
             ep0_data_offset_ += count;
             if (ep0_data_offset_ == ep0_data_length_) {
 printf("flush fifo | txpktrdy\n");
-                TXCSR_PERI::Get()
+                CSR0_PERI::Get()
                     .ReadFrom(mmio)
-                    .set_flushfifo(1)
+                    .set_dataend(1)
                     .set_txpktrdy(1)
                     .WriteTo(mmio);   
                 ep0_state_ = EP0_IDLE;
             } else {
-                TXCSR_PERI::Get()
+                CSR0_PERI::Get()
                     .ReadFrom(mmio)
                     .set_txpktrdy(1)
                     .WriteTo(mmio);   
@@ -334,7 +333,6 @@ void MtUsb::FifoWrite(uint8_t ep_index, const void* buf, size_t length) {
     auto src = static_cast<const uint8_t*>(buf);
 
     while (remaining > 0) {
-printf("wrote %02x\n", *src);
         FIFO_8::Get(ep_index).FromValue(0).set_fifo_data(*src++).WriteTo(mmio);
         remaining--;
     }
