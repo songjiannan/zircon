@@ -76,16 +76,6 @@ zx_status_t MtUsb::Init() {
         return status;
     }
 
-    int rc = thrd_create_with_name(&irq_thread_,
-                                   [](void* arg) -> int {
-                                       return reinterpret_cast<MtUsb*>(arg)->IrqThread();
-                                   },
-                                   reinterpret_cast<void*>(this),
-                                   "mt-usb-irq-thread");
-    if (rc != thrd_success) {
-        return ZX_ERR_INTERNAL;
-    }
-
     status = DdkAdd("mt-usb");
     if (status != ZX_OK) {
         return status;
@@ -195,6 +185,58 @@ void MtUsb::HandleEp0() {
     printf("%s\n", __func__);
     auto txcsr = TXCSR_PERI::Get().ReadFrom(mmio);
     txcsr.Print();
+
+    switch (ep0_state_) {
+    case EP0_IDLE:
+        if (txcsr.txpktrdy()) {
+            size_t actual;
+            FifoRead(0, &cur_setup_, sizeof(cur_setup_), &actual);
+            if (actual != sizeof(cur_setup_)) {
+                zxlogf(ERROR, "%s: setup read only read %zu bytes\n", __func__, actual);
+                return;
+            }
+            zxlogf(INFO, "SETUP bmRequestType %x bRequest %u wValue %u wIndex %u wLength %u\n",
+                   cur_setup_.bmRequestType, cur_setup_.bRequest, cur_setup_.wValue,
+                   cur_setup_.wIndex, cur_setup_.wLength);
+            
+            if (cur_setup_.wLength > 0 && (cur_setup_.bmRequestType & USB_DIR_MASK) == USB_DIR_OUT) {
+                // TODO read additional data
+            } else {
+                size_t actual;
+                dci_intf_->Control(&cur_setup_, nullptr, 0, ep0_buffer_, sizeof(ep0_buffer_), &actual);
+            }
+        }
+        break;
+    }
+}
+
+void MtUsb::FifoRead(uint8_t ep_index, void* buf, size_t buflen, size_t* actual) {
+    auto* mmio = usb_mmio();
+
+    // set index to endpoint zero
+    INDEX::Get().FromValue(0).WriteTo(mmio);
+
+    size_t count = RXCOUNT::Get().ReadFrom(mmio).rxcount();
+printf("fifo count: %zu\n", count);
+    if (count > buflen) {
+        zxlogf(ERROR, "%s: buffer too small\n", __func__);
+        count = buflen;
+    }
+
+    auto remaining = count;
+    auto dest = static_cast<uint32_t*>(buf);
+
+    while (remaining >= 4) {
+        *dest++ = FIFO::Get(ep_index).ReadFrom(mmio).fifo_data();
+        remaining -= 4;
+    }
+    auto dest_8 = reinterpret_cast<uint8_t*>(dest);
+    while (remaining > 0) {
+        *dest_8++ = FIFO_8::Get(ep_index).ReadFrom(mmio).fifo_data();
+        remaining--;
+    }
+
+    *actual = count;
 }
 
 int MtUsb::IrqThread() {
@@ -307,12 +349,31 @@ void MtUsb::DdkRelease() {
     delete this;
 }
 
- void MtUsb::UsbDciRequestQueue(usb_request_t* req) {
- printf("%s\n", __func__);
- }
+void MtUsb::UsbDciRequestQueue(usb_request_t* req) {
+printf("%s\n", __func__);
+}
  
- zx_status_t MtUsb::UsbDciSetInterface(const usb_dci_interface_t* interface) {
-    memcpy(&dci_intf_, interface, sizeof(dci_intf_));
+zx_status_t MtUsb::UsbDciSetInterface(const usb_dci_interface_t* interface) {
+    // TODO - handle interface == nullptr for tear down path?
+
+    if (dci_intf_.has_value()) {
+        zxlogf(ERROR, "%s: dci_intf_ already set\n", __func__);
+        return ZX_ERR_BAD_STATE;
+    }
+
+    dci_intf_ = ddk::UsbDciInterfaceProxy(interface);
+
+    // Now that the usb-peripheral driver has bound, we can start things up.
+    int rc = thrd_create_with_name(&irq_thread_,
+                                   [](void* arg) -> int {
+                                       return reinterpret_cast<MtUsb*>(arg)->IrqThread();
+                                   },
+                                   reinterpret_cast<void*>(this),
+                                   "mt-usb-irq-thread");
+    if (rc != thrd_success) {
+        return ZX_ERR_INTERNAL;
+    }
+
     return ZX_OK;
 }
 

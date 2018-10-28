@@ -274,11 +274,18 @@ public:
     static auto Get() { return hwreg::RegisterAddr<FIFOSIZE>(0x1f); }
 };
 
-// USB Endpoint n FIFO Register
+// USB Endpoint n FIFO Register (32 bit access)
 class FIFO : public hwreg::RegisterBase<FIFO, uint32_t> {
 public:
     DEF_FIELD(31, 0, fifo_data);
     static auto Get(uint32_t ep) { return hwreg::RegisterAddr<FIFO>(0x20 + ep * 4); }
+};
+
+// USB Endpoint n FIFO Register (8 bit access)
+class FIFO_8 : public hwreg::RegisterBase<FIFO_8, uint8_t> {
+public:
+    DEF_FIELD(7, 0, fifo_data);
+    static auto Get(uint32_t ep) { return hwreg::RegisterAddr<FIFO_8>(0x20 + ep * 4); }
 };
 
 // Device Control Register

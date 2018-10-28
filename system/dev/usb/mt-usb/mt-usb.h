@@ -13,6 +13,7 @@
 #include <fbl/unique_ptr.h>
 #include <lib/zx/handle.h>
 #include <lib/zx/interrupt.h>
+#include <zircon/hw/usb.h>
 
 #include <threads.h>
 
@@ -46,6 +47,10 @@ public:
 private:
     DISALLOW_COPY_ASSIGN_AND_MOVE(MtUsb);
 
+    enum Ep0State {
+        EP0_IDLE,
+    };
+
     zx_status_t Init();
     void InitPhy();
     int IrqThread();
@@ -53,6 +58,7 @@ private:
     void HandleSuspend();
     void HandleReset();
     void HandleEp0();
+    void FifoRead(uint8_t ep_index, void* buf, size_t buflen, size_t* actual);
 
     inline ddk::MmioBuffer* usb_mmio() {
         return &*usb_mmio_;
@@ -62,7 +68,7 @@ private:
     }
 
     pdev_protocol_t pdev_;
-    usb_dci_interface_t dci_intf_ = {};
+    fbl::optional<ddk::UsbDciInterfaceProxy> dci_intf_;
     zx::handle bti_;
 
     fbl::optional<ddk::MmioBuffer> usb_mmio_;
@@ -73,6 +79,11 @@ private:
 
     // Address assigned to us by the host.
     uint8_t address_ = 0;
+
+    Ep0State ep0_state_ = EP0_IDLE;
+    usb_setup_t cur_setup_;
+
+    uint8_t ep0_buffer_[UINT16_MAX];
 };
 
 } // namespace mt_usb
