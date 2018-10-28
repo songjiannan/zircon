@@ -182,13 +182,18 @@ void MtUsb::HandleReset() {
 void MtUsb::HandleEp0() {
     auto* mmio = usb_mmio();
 
-    printf("%s\n", __func__);
-    auto txcsr = TXCSR_PERI::Get().ReadFrom(mmio);
-    txcsr.Print();
+    // Loop until we explicitly return from this function.
+    // This allows us to handle multiple state transitions at once when appropriate.
+    while (true) {
+        switch (ep0_state_) {
+        case EP0_IDLE: {
+printf("case EP0_IDLE\n");
+            auto txcsr = TXCSR_PERI::Get().ReadFrom(mmio);
+            // For some reason the txcsr bit can mean RX packet ready for endpoint zero.
+            if (!txcsr.txpktrdy()) {
+                return;
+            }
 
-    switch (ep0_state_) {
-    case EP0_IDLE:
-        if (txcsr.txpktrdy()) {
             size_t actual;
             FifoRead(0, &cur_setup_, sizeof(cur_setup_), &actual);
             if (actual != sizeof(cur_setup_)) {
@@ -200,21 +205,78 @@ void MtUsb::HandleEp0() {
                    cur_setup_.wIndex, cur_setup_.wLength);
             
             if (cur_setup_.wLength > 0 && (cur_setup_.bmRequestType & USB_DIR_MASK) == USB_DIR_OUT) {
-                // TODO read additional data
+                ep0_state_ = EP0_READ;
+                ep0_data_offset_ = 0;
+                ep0_data_length_ = cur_setup_.wLength;
+                break;
             } else {
+                if (cur_setup_.bmRequestType == (USB_DIR_OUT | USB_TYPE_STANDARD | USB_RECIP_DEVICE)
+                    && cur_setup_.bRequest == USB_REQ_SET_ADDRESS) {
+                    FADDR::Get()
+                        .FromValue(0)
+                        .set_function_address(static_cast<uint8_t>(cur_setup_.wValue))
+                        .WriteTo(mmio);
+                    continue;
+                }
+                // TODO handle SET_CONFIGURATION?
                 size_t actual;
-                dci_intf_->Control(&cur_setup_, nullptr, 0, ep0_buffer_, sizeof(ep0_buffer_), &actual);
+                auto status = dci_intf_->Control(&cur_setup_, nullptr, 0, ep0_data_, sizeof(ep0_data_), &actual);
+                if (status != ZX_OK) {
+                    // TODO error handling
+                    zxlogf(ERROR, "%s: Control returned %d\n", __func__, status);
+                    return;
+                }
+printf("actual: %zu\n", actual);
+                if (actual > 0) {
+                    ep0_state_ = EP0_WRITE;
+                    ep0_data_offset_ = 0;
+                    ep0_data_length_ = actual;
+                } else {
+                    ep0_state_ = EP0_IDLE;
+                }
             }
+            break;
         }
-        break;
+        case EP0_READ:
+printf("case EP0_READ\n");
+            break;
+        case EP0_WRITE: {
+printf("case EP0_WRITE\n");
+            auto txcsr = TXCSR_PERI::Get().ReadFrom(mmio);
+            if (!txcsr.txpktrdy()) {
+printf("EP0_WRITE not ready\n");
+                return;
+            }
+            size_t count = ep0_data_length_ - ep0_data_offset_;
+            if (count > EP0_MAX_PACKET_SIZE) {
+                count = EP0_MAX_PACKET_SIZE;
+            }
+printf("FifoWrite %zu\n", count);
+            FifoWrite(0, ep0_data_ + ep0_data_offset_, count);
+            ep0_data_offset_ += count;
+            if (ep0_data_offset_ == ep0_data_length_) {
+                TXCSR_PERI::Get()
+                    .ReadFrom(mmio)
+                    .set_flushfifo(1)
+                    .set_txpktrdy(1)
+                    .WriteTo(mmio);   
+                ep0_state_ = EP0_IDLE;
+            } else {
+                TXCSR_PERI::Get()
+                    .ReadFrom(mmio)
+                    .set_txpktrdy(1)
+                    .WriteTo(mmio);   
+            }
+            break;
+        }
+        }
     }
 }
 
 void MtUsb::FifoRead(uint8_t ep_index, void* buf, size_t buflen, size_t* actual) {
     auto* mmio = usb_mmio();
 
-    // set index to endpoint zero
-    INDEX::Get().FromValue(0).WriteTo(mmio);
+    INDEX::Get().FromValue(ep_index).WriteTo(mmio);
 
     size_t count = RXCOUNT::Get().ReadFrom(mmio).rxcount();
 printf("fifo count: %zu\n", count);
@@ -237,6 +299,21 @@ printf("fifo count: %zu\n", count);
     }
 
     *actual = count;
+}
+
+void MtUsb::FifoWrite(uint8_t ep_index, const void* buf, size_t length) {
+    auto* mmio = usb_mmio();
+
+    INDEX::Get().FromValue(ep_index).WriteTo(mmio);
+
+    auto remaining = length;
+    auto src = static_cast<const uint8_t*>(buf);
+
+    while (remaining > 0) {
+printf("wrote %02x\n", *src);
+        FIFO_8::Get(ep_index).FromValue(0).set_fifo_data(*src++).WriteTo(mmio);
+        remaining--;
+    }
 }
 
 int MtUsb::IrqThread() {

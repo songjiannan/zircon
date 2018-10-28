@@ -47,8 +47,15 @@ public:
 private:
     DISALLOW_COPY_ASSIGN_AND_MOVE(MtUsb);
 
+    static constexpr size_t EP0_MAX_PACKET_SIZE = 64;
+
     enum Ep0State {
+        // Waiting for next setup request.
         EP0_IDLE,
+        // Reading data for setup request.
+        EP0_READ,
+        // Writing data for setup request.
+        EP0_WRITE,
     };
 
     zx_status_t Init();
@@ -59,6 +66,7 @@ private:
     void HandleReset();
     void HandleEp0();
     void FifoRead(uint8_t ep_index, void* buf, size_t buflen, size_t* actual);
+    void FifoWrite(uint8_t ep_index, const void* buf, size_t length);
 
     inline ddk::MmioBuffer* usb_mmio() {
         return &*usb_mmio_;
@@ -83,7 +91,12 @@ private:
     Ep0State ep0_state_ = EP0_IDLE;
     usb_setup_t cur_setup_;
 
-    uint8_t ep0_buffer_[UINT16_MAX];
+    // TODO make this a DMA buffer?
+    uint8_t ep0_data_[UINT16_MAX];
+    // Current read/write location in ep0_buffer_
+    size_t ep0_data_offset_ = 0;
+    // Total length to read or write
+    size_t ep0_data_length_ = 0;
 };
 
 } // namespace mt_usb

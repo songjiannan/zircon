@@ -185,7 +185,7 @@ public:
 };
 
 // RX CSR Register (peripheral mode)
-class RXCSR_PERI : public hwreg::RegisterBase<RXCSR_PERI, uint16_t> {
+class RXCSR_PERI : public hwreg::RegisterBase<RXCSR_PERI, uint16_t, hwreg::EnablePrinter> {
 public:
     DEF_BIT(15, autoclear);
     DEF_BIT(14, iso);
