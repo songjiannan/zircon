@@ -174,7 +174,21 @@ void MtUsb::HandleReset() {
 
     // TODO flush fifos
 
-    POWER_PERI::Get().ReadFrom(mmio).Print();
+//    POWER_PERI::Get().ReadFrom(mmio).Print();
+
+    if (POWER_PERI::Get().ReadFrom(mmio).hsmode()) {
+        ep0_max_packet_ = 64;
+    } else {
+        ep0_max_packet_ = 8;
+    }
+
+    INDEX::Get().FromValue(0).WriteTo(mmio);
+
+printf("ep0_max_packet_ %u\n", ep0_max_packet_);
+    TXMAP::Get()
+        .FromValue(0)
+        .set_maximum_payload_transaction(ep0_max_packet_)
+        .WriteTo(mmio);
 
     // TODO mt_udc_rxtxmap_recover()
 }
@@ -182,13 +196,22 @@ void MtUsb::HandleReset() {
 void MtUsb::HandleEp0() {
     auto* mmio = usb_mmio();
 
+    INDEX::Get().FromValue(0).WriteTo(mmio);
+
+auto txcsr = TXCSR_PERI::Get().ReadFrom(mmio);
+auto rxcsr = RXCSR_PERI::Get().ReadFrom(mmio);
+printf("TXCSR\n");
+txcsr.Print();
+printf("RXCSR\n");
+rxcsr.Print();
+
     // Loop until we explicitly return from this function.
     // This allows us to handle multiple state transitions at once when appropriate.
     while (true) {
         switch (ep0_state_) {
         case EP0_IDLE: {
 printf("case EP0_IDLE\n");
-            auto txcsr = TXCSR_PERI::Get().ReadFrom(mmio);
+//            auto txcsr = TXCSR_PERI::Get().ReadFrom(mmio);
             // For some reason the txcsr bit can mean RX packet ready for endpoint zero.
             if (!txcsr.txpktrdy()) {
                 return;
@@ -242,19 +265,20 @@ printf("case EP0_READ\n");
             break;
         case EP0_WRITE: {
 printf("case EP0_WRITE\n");
-            auto txcsr = TXCSR_PERI::Get().ReadFrom(mmio);
+//            auto txcsr = TXCSR_PERI::Get().ReadFrom(mmio);
             if (!txcsr.txpktrdy()) {
 printf("EP0_WRITE not ready\n");
                 return;
             }
             size_t count = ep0_data_length_ - ep0_data_offset_;
-            if (count > EP0_MAX_PACKET_SIZE) {
-                count = EP0_MAX_PACKET_SIZE;
+            if (count > ep0_max_packet_) {
+                count = ep0_max_packet_;
             }
 printf("FifoWrite %zu\n", count);
             FifoWrite(0, ep0_data_ + ep0_data_offset_, count);
             ep0_data_offset_ += count;
             if (ep0_data_offset_ == ep0_data_length_) {
+printf("flush fifo | txpktrdy\n");
                 TXCSR_PERI::Get()
                     .ReadFrom(mmio)
                     .set_flushfifo(1)
@@ -279,7 +303,7 @@ void MtUsb::FifoRead(uint8_t ep_index, void* buf, size_t buflen, size_t* actual)
     INDEX::Get().FromValue(ep_index).WriteTo(mmio);
 
     size_t count = RXCOUNT::Get().ReadFrom(mmio).rxcount();
-printf("fifo count: %zu\n", count);
+printf("RXCOUNT: %zu\n", count);
     if (count > buflen) {
         zxlogf(ERROR, "%s: buffer too small\n", __func__);
         count = buflen;

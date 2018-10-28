@@ -47,8 +47,6 @@ public:
 private:
     DISALLOW_COPY_ASSIGN_AND_MOVE(MtUsb);
 
-    static constexpr size_t EP0_MAX_PACKET_SIZE = 64;
-
     enum Ep0State {
         // Waiting for next setup request.
         EP0_IDLE,
@@ -97,6 +95,8 @@ private:
     size_t ep0_data_offset_ = 0;
     // Total length to read or write
     size_t ep0_data_length_ = 0;
+
+    uint8_t ep0_max_packet_;
 };
 
 } // namespace mt_usb
