@@ -187,10 +187,10 @@ void MtUsb::HandleReset() {
         ep0_max_packet_ = 8;
     }
 
-    INDEX::Get().FromValue(0).WriteTo(mmio);
+//    INDEX::Get().FromValue(0).WriteTo(mmio);
 
 printf("ep0_max_packet_ %u\n", ep0_max_packet_);
-    TXMAP::Get()
+    TXMAP::Get(0)
         .FromValue(0)
         .set_maximum_payload_transaction(ep0_max_packet_)
         .WriteTo(mmio);
@@ -201,7 +201,7 @@ printf("ep0_max_packet_ %u\n", ep0_max_packet_);
 void MtUsb::HandleEp0() {
     auto* mmio = usb_mmio();
 
-    INDEX::Get().FromValue(0).WriteTo(mmio);
+//    INDEX::Get().FromValue(0).WriteTo(mmio);
 
     // Loop until we explicitly return from this function.
     // This allows us to handle multiple state transitions at once when appropriate.
@@ -329,9 +329,9 @@ printf("flush dataend | txpktrdy\n");
 void MtUsb::FifoRead(uint8_t ep_index, void* buf, size_t buflen, size_t* actual) {
     auto* mmio = usb_mmio();
 
-    INDEX::Get().FromValue(ep_index).WriteTo(mmio);
+//    INDEX::Get().FromValue(ep_index).WriteTo(mmio);
 
-    size_t count = RXCOUNT::Get().ReadFrom(mmio).rxcount();
+    size_t count = RXCOUNT::Get(0).ReadFrom(mmio).rxcount();
 printf("RXCOUNT: %zu\n", count);
     if (count > buflen) {
         zxlogf(ERROR, "%s: buffer too small\n", __func__);
@@ -357,7 +357,7 @@ printf("RXCOUNT: %zu\n", count);
 void MtUsb::FifoWrite(uint8_t ep_index, const void* buf, size_t length) {
     auto* mmio = usb_mmio();
 
-    INDEX::Get().FromValue(ep_index).WriteTo(mmio);
+//    INDEX::Get().FromValue(ep_index).WriteTo(mmio);
 
     auto remaining = length;
     auto src = static_cast<const uint8_t*>(buf);
