@@ -85,6 +85,7 @@ private:
 
     // Address assigned to us by the host.
     uint8_t address_ = 0;
+    bool set_address_ = false;
 
     Ep0State ep0_state_ = EP0_IDLE;
     usb_setup_t cur_setup_;

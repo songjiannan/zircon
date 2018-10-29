@@ -176,37 +176,6 @@ public:
     static auto Get() { return hwreg::RegisterAddr<TXCSR_HOST>(0x12); }
 };
 
-// EP0 Control Status Register (peripheral mode)
-class CSR0_PERI : public hwreg::RegisterBase<CSR0_PERI, uint16_t, hwreg::EnablePrinter> {
-public:
-    DEF_BIT(8, flushfifo);
-    DEF_BIT(7, serviced_setup_end);
-    DEF_BIT(6, serviced_rxpktrdy);
-    DEF_BIT(5, sendstall);
-    DEF_BIT(4, setupend);
-    DEF_BIT(3, dataend);
-    DEF_BIT(2, sentstall);
-    DEF_BIT(1, txpktrdy);
-    DEF_BIT(0, rxpktrdy);
-    static auto Get() { return hwreg::RegisterAddr<CSR0_PERI>(0x12); }
-};
-
-//EP0 Control Status Register (host mode)
-class CSR0_HOST : public hwreg::RegisterBase<CSR0_HOST, uint16_t> {
-public:
-    DEF_BIT(11, disping);
-    DEF_BIT(8, flushfifo);
-    DEF_BIT(7, naktimeout);
-    DEF_BIT(6, statuspkt);
-    DEF_BIT(5, reqpkt);
-    DEF_BIT(4, error);
-    DEF_BIT(3, setuppkt);
-    DEF_BIT(2, rxstall);
-    DEF_BIT(1, txpktrdy);
-    DEF_BIT(0, rxpktrdy);
-    static auto Get() { return hwreg::RegisterAddr<CSR0_HOST>(0x12); }
-};
-
 // RXMAP Register
 class RXMAP : public hwreg::RegisterBase<RXMAP, uint16_t> {
 public:
@@ -256,6 +225,37 @@ public:
     DEF_BIT(1, fifofull);
     DEF_BIT(0, rxpktrdy);
     static auto Get() { return hwreg::RegisterAddr<RXCSR_HOST>(0x16); }
+};
+
+// EP0 Control Status Register (peripheral mode)
+class CSR0_PERI : public hwreg::RegisterBase<CSR0_PERI, uint16_t, hwreg::EnablePrinter> {
+public:
+    DEF_BIT(8, flushfifo);
+    DEF_BIT(7, serviced_setupend);
+    DEF_BIT(6, serviced_rxpktrdy);
+    DEF_BIT(5, sendstall);
+    DEF_BIT(4, setupend);
+    DEF_BIT(3, dataend);
+    DEF_BIT(2, sentstall);
+    DEF_BIT(1, txpktrdy);
+    DEF_BIT(0, rxpktrdy);
+    static auto Get() { return hwreg::RegisterAddr<CSR0_PERI>(0x12); }
+};
+
+//EP0 Control Status Register (host mode)
+class CSR0_HOST : public hwreg::RegisterBase<CSR0_HOST, uint16_t> {
+public:
+    DEF_BIT(11, disping);
+    DEF_BIT(8, flushfifo);
+    DEF_BIT(7, naktimeout);
+    DEF_BIT(6, statuspkt);
+    DEF_BIT(5, reqpkt);
+    DEF_BIT(4, error);
+    DEF_BIT(3, setuppkt);
+    DEF_BIT(2, rxstall);
+    DEF_BIT(1, txpktrdy);
+    DEF_BIT(0, rxpktrdy);
+    static auto Get() { return hwreg::RegisterAddr<CSR0_HOST>(0x12); }
 };
 
 // RX Count Register

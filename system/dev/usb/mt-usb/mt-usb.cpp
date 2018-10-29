@@ -155,7 +155,12 @@ void MtUsb::HandleSuspend() {
 void MtUsb::HandleReset() {
     auto* mmio = usb_mmio();
 
+    FADDR::Get()
+        .FromValue(0)
+        .set_function_address(0)
+        .WriteTo(mmio);
     address_ = 0;
+    set_address_ = false;
 
 /* ???
     INTRTXE::Get()
@@ -201,11 +206,31 @@ void MtUsb::HandleEp0() {
     // Loop until we explicitly return from this function.
     // This allows us to handle multiple state transitions at once when appropriate.
     while (true) {
+        auto csr0 = CSR0_PERI::Get().ReadFrom(mmio);
+
+//printf("HandleEp0 csr0:\n");
+//csr0.Print();
+
+        if (csr0.setupend()) {
+printf("SETUPEND\n");
+            csr0.set_serviced_setupend(1);
+            csr0.WriteTo(mmio);
+            csr0.ReadFrom(mmio);
+            ep0_state_ = EP0_IDLE;
+        }
+
         switch (ep0_state_) {
         case EP0_IDLE: {
 printf("case EP0_IDLE\n");
-            auto csr0 = CSR0_PERI::Get().ReadFrom(mmio);
-            // For some reason the txcsr bit can mean RX packet ready for endpoint zero.
+
+            if (set_address_) {
+                FADDR::Get()
+                    .FromValue(0)
+                    .set_function_address(address_)
+                    .WriteTo(mmio);
+                set_address_ = false;
+            }
+
             if (!csr0.rxpktrdy()) {
                 return;
             }
@@ -219,35 +244,33 @@ printf("case EP0_IDLE\n");
             zxlogf(INFO, "SETUP bmRequestType %x bRequest %u wValue %u wIndex %u wLength %u\n",
                    cur_setup_.bmRequestType, cur_setup_.bRequest, cur_setup_.wValue,
                    cur_setup_.wIndex, cur_setup_.wLength);
-
-            CSR0_PERI::Get()
-                .ReadFrom(mmio)
-                .set_serviced_rxpktrdy(1)
-                .set_dataend(cur_setup_.wLength == 0)
-                .WriteTo(mmio);
             
             if (cur_setup_.wLength > 0 && (cur_setup_.bmRequestType & USB_DIR_MASK) == USB_DIR_OUT) {
                 ep0_state_ = EP0_READ;
                 ep0_data_offset_ = 0;
                 ep0_data_length_ = cur_setup_.wLength;
+
+// TODO update CSR0_PERI here?
                 break;
             } else {
+                size_t actual = 0;
+
                 if (cur_setup_.bmRequestType == (USB_DIR_OUT | USB_TYPE_STANDARD | USB_RECIP_DEVICE)
                     && cur_setup_.bRequest == USB_REQ_SET_ADDRESS) {
-                    FADDR::Get()
-                        .FromValue(0)
-                        .set_function_address(static_cast<uint8_t>(cur_setup_.wValue))
-                        .WriteTo(mmio);
-                    continue;
+printf("SET_ADDRESS %u\n", cur_setup_.wValue);
+
+                    address_ = static_cast<uint8_t>(cur_setup_.wValue);
+                    set_address_ = true;
+                } else {
+                    // TODO handle SET_CONFIGURATION?
+                    auto status = dci_intf_->Control(&cur_setup_, nullptr, 0, ep0_data_, sizeof(ep0_data_), &actual);
+                    if (status != ZX_OK) {
+                        // TODO error handling
+                        zxlogf(ERROR, "%s: Control returned %d\n", __func__, status);
+                        return;
+                    }
                 }
-                // TODO handle SET_CONFIGURATION?
-                size_t actual;
-                auto status = dci_intf_->Control(&cur_setup_, nullptr, 0, ep0_data_, sizeof(ep0_data_), &actual);
-                if (status != ZX_OK) {
-                    // TODO error handling
-                    zxlogf(ERROR, "%s: Control returned %d\n", __func__, status);
-                    return;
-                }
+
 printf("actual: %zu\n", actual);
                 if (actual > 0) {
                     ep0_state_ = EP0_WRITE;
@@ -256,6 +279,18 @@ printf("actual: %zu\n", actual);
                 } else {
                     ep0_state_ = EP0_IDLE;
                 }
+
+                csr0.ReadFrom(mmio);
+                csr0.set_serviced_rxpktrdy(1);
+                if (actual == 0) {
+                    csr0.set_dataend(1);
+                }
+                csr0.WriteTo(mmio);
+                csr0.WriteTo(mmio); // ???
+
+if (ep0_state_ == EP0_IDLE) {
+    return;
+}
             }
             break;
         }
@@ -264,7 +299,6 @@ printf("case EP0_READ\n");
             break;
         case EP0_WRITE: {
 printf("case EP0_WRITE\n");
-            auto csr0 = CSR0_PERI::Get().ReadFrom(mmio);
             if (csr0.txpktrdy()) {
 printf("EP0_WRITE not ready\n");
                 return;
@@ -277,18 +311,14 @@ printf("FifoWrite %zu\n", count);
             FifoWrite(0, ep0_data_ + ep0_data_offset_, count);
             ep0_data_offset_ += count;
             if (ep0_data_offset_ == ep0_data_length_) {
-printf("flush fifo | txpktrdy\n");
-                CSR0_PERI::Get()
-                    .ReadFrom(mmio)
-                    .set_dataend(1)
+printf("flush dataend | txpktrdy\n");
+                csr0.set_dataend(1)
                     .set_txpktrdy(1)
                     .WriteTo(mmio);   
                 ep0_state_ = EP0_IDLE;
             } else {
-                CSR0_PERI::Get()
-                    .ReadFrom(mmio)
-                    .set_txpktrdy(1)
-                    .WriteTo(mmio);   
+                csr0.set_txpktrdy(1)
+                    .WriteTo(mmio);
             }
             break;
         }
@@ -400,8 +430,6 @@ int MtUsb::IrqThread() {
         .set_dma(1)
         .WriteTo(mmio);
 
-zxlogf(INFO, "%s: Wait for Interrupt\n", __func__);
-
     while (true) {
         auto status = irq_.wait(nullptr);
         if (status == ZX_ERR_CANCELED) {
@@ -410,7 +438,7 @@ zxlogf(INFO, "%s: Wait for Interrupt\n", __func__);
             zxlogf(ERROR, "%s: irq_.wait failed: %d\n", __func__, status);
             return -1;
         }
-        zxlogf(INFO, "%s: got interrupt!\n", __func__);
+        zxlogf(INFO, " \n%s: got interrupt!\n", __func__);
 
         // Write back these registers to acknowledge the interrupts
         auto intrtx = INTRTX::Get().ReadFrom(mmio).WriteTo(mmio);
