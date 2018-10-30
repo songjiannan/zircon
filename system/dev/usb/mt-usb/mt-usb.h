@@ -9,10 +9,12 @@
 #include <ddktl/mmio.h>
 #include <ddktl/protocol/usb-dci.h>
 #include <fbl/macros.h>
+#include <fbl/mutex.h>
 #include <fbl/optional.h>
 #include <fbl/unique_ptr.h>
 #include <lib/zx/handle.h>
 #include <lib/zx/interrupt.h>
+#include <zircon/listnode.h>
 #include <zircon/hw/usb.h>
 
 #include <threads.h>
@@ -56,7 +58,28 @@ private:
         EP0_WRITE,
     };
 
+    enum EpDirection {
+        EP_OUT,
+        EP_IN,
+    };
+
+    struct Endpoint {
+        // Requests waiting to be processed.
+        list_node_t queued_reqs;
+        // request currently being processed.
+        usb_request_t* current_req;
+        // Endpoint number to use when indexing into hardware registers.
+        uint32_t ep_num;
+        EpDirection direction;
+        // DMA channel number allocated to this endpoint.
+        uint8_t dma_channel;
+        bool enabled;
+
+        fbl::Mutex lock;    
+    };
+
     zx_status_t Init();
+    void InitEndpoints();
     void InitPhy();
     int IrqThread();
 
@@ -65,6 +88,14 @@ private:
     void HandleEp0();
     void FifoRead(uint8_t ep_index, void* buf, size_t buflen, size_t* actual);
     void FifoWrite(uint8_t ep_index, const void* buf, size_t length);
+
+    static uint8_t EpAddressToIndex(uint8_t addr);
+
+    static constexpr uint8_t DMA_CHANNEL_COUNT = 8;
+    static constexpr uint8_t DMA_CHANNEL_INVALID = 0xff;
+
+    zx_status_t AllocDmaChannel(Endpoint* ep);
+    void ReleaseDmaChannel(Endpoint* ep);
 
     inline ddk::MmioBuffer* usb_mmio() {
         return &*usb_mmio_;
@@ -83,6 +114,12 @@ private:
     zx::interrupt irq_;
     thrd_t irq_thread_;
 
+    // Number of endpoints we support, not counting ep0.
+    // We are limited to 8 DMA channels so we will really allow a total of 8.
+    // But we use 16 here since we keep IN and OUT endpoints separate in the "eps" array.
+    static constexpr size_t NUM_EPS = 16;
+    Endpoint eps[NUM_EPS];
+
     // Address assigned to us by the host.
     uint8_t address_ = 0;
     bool set_address_ = false;
@@ -98,6 +135,9 @@ private:
     size_t ep0_data_length_ = 0;
 
     uint8_t ep0_max_packet_;
+
+    // Bitfield of allocated DMA channels
+    uint32_t dma_channel_alloc_ = 0;
 };
 
 } // namespace mt_usb

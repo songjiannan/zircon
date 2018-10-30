@@ -21,12 +21,41 @@
 #include <ddk/protocol/platform-device-lib.h>
 #include <hw/reg.h>
 #include <fbl/algorithm.h>
+#include <fbl/auto_lock.h>
 #include <fbl/unique_ptr.h>
+#include <usb/usb-request.h>
 
 #include "mt-usb-regs.h"
 #include "mt-usb-phy-regs.h"
 
 namespace mt_usb {
+
+uint8_t MtUsb::EpAddressToIndex(uint8_t addr) {
+    // map 0x01 -> 0, 0x81 -> 2, 0x02 -> 3, 0x82 -> 4, ...
+    if (addr & USB_ENDPOINT_DIR_MASK) {
+        return static_cast<uint8_t>(2 * (addr & USB_ENDPOINT_NUM_MASK));
+    } else {
+        return static_cast<uint8_t>(2 * (addr & USB_ENDPOINT_NUM_MASK) - 1);
+    }
+}
+
+zx_status_t MtUsb::AllocDmaChannel(Endpoint* ep) {
+    for (uint8_t i = 0; i < DMA_CHANNEL_COUNT; i++) {
+        if ((dma_channel_alloc_ & (1 << i)) == 0) {
+            ep->dma_channel = i;
+            dma_channel_alloc_ |= (1 << i);
+            return ZX_OK;
+        }
+    }
+    return ZX_ERR_NO_RESOURCES;
+}
+
+void MtUsb::ReleaseDmaChannel(Endpoint* ep) {
+    if (ep->dma_channel < DMA_CHANNEL_COUNT) {
+        dma_channel_alloc_ &= ~(1 << ep->dma_channel);
+    }
+    ep->dma_channel = DMA_CHANNEL_INVALID;
+}
 
 zx_status_t MtUsb::Create(zx_device_t* parent) {
     pdev_protocol_t pdev;
@@ -52,7 +81,20 @@ zx_status_t MtUsb::Create(zx_device_t* parent) {
     return ZX_OK;
 }
 
+void MtUsb::InitEndpoints() {
+    for (uint8_t i = 0; i < countof(eps); i++) {
+        auto* ep = &eps[i];
+        ep->direction = (i & 1 ? EP_IN : EP_OUT);
+        ep->ep_num = i / 2 + 1;
+        list_initialize(&ep->queued_reqs);
+        ep->current_req = nullptr;
+        ep->dma_channel = DMA_CHANNEL_INVALID;
+    }
+}
+
 zx_status_t MtUsb::Init() {
+    InitEndpoints();
+
     auto status = pdev_get_bti(&pdev_, 0, bti_.reset_and_get_address());
     if (status != ZX_OK) {
         return status;
@@ -477,7 +519,23 @@ void MtUsb::DdkRelease() {
 }
 
 void MtUsb::UsbDciRequestQueue(usb_request_t* req) {
-printf("%s\n", __func__);
+    uint8_t ep_index = EpAddressToIndex(req->header.ep_address);
+    if (ep_index >= countof(eps)) {
+        zxlogf(ERROR, "%s: invalid endpoint address %02x\n", __func__, req->header.ep_address);
+        return;
+    }
+    Endpoint* ep = &eps[ep_index];
+
+    fbl::AutoLock lock(&ep->lock);
+
+    if (!ep->enabled) {
+        usb_request_complete(req, ZX_ERR_BAD_STATE, 0);
+        return;
+    }
+
+    list_add_tail(&ep->queued_reqs, &req->node);
+
+    // TODO - kick off the transaction
 }
  
 zx_status_t MtUsb::UsbDciSetInterface(const usb_dci_interface_t* interface) {
@@ -504,8 +562,22 @@ zx_status_t MtUsb::UsbDciSetInterface(const usb_dci_interface_t* interface) {
     return ZX_OK;
 }
 
- zx_status_t MtUsb::UsbDciConfigEp(const usb_endpoint_descriptor_t* ep_desc, const
-                            usb_ss_ep_comp_descriptor_t* ss_comp_desc) {
+ zx_status_t MtUsb::UsbDciConfigEp(const usb_endpoint_descriptor_t* ep_desc,
+                                   const usb_ss_ep_comp_descriptor_t* ss_comp_desc) {
+    uint8_t ep_index = EpAddressToIndex(ep_desc->bEndpointAddress);
+    if (ep_index >= countof(eps)) {
+        zxlogf(ERROR, "%s: endpoint address %02x too large\n", __func__, ep_desc->bEndpointAddress);
+        return ZX_ERR_OUT_OF_RANGE;
+    }
+
+    Endpoint* ep = &eps[ep_index];
+    auto status = AllocDmaChannel(ep);
+    if (status != ZX_OK) {
+        zxlogf(ERROR, "%s: AllocDmaChannel failed for endpoint %02x: %d\n", __func__,
+               ep_desc->bEndpointAddress, status);
+        return status;
+    }
+
     return ZX_OK;
 }
 
