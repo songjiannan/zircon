@@ -87,6 +87,8 @@ void MtUsb::InitEndpoints() {
         ep->direction = (i & 1 ? EP_IN : EP_OUT);
         ep->ep_num = i / 2 + 1;
         list_initialize(&ep->queued_reqs);
+
+        fbl::AutoLock lock(&ep->lock);
         ep->current_req = nullptr;
         ep->dma_channel = DMA_CHANNEL_INVALID;
     }
@@ -371,6 +373,33 @@ printf("flush dataend | txpktrdy\n");
         }
     }
 }
+
+void MtUsb::EpQueueNextLocked(Endpoint* ep) {
+    usb_request_t* req;
+
+    if (ep->current_req == nullptr &&
+        (req = list_remove_head_type(&ep->queued_reqs, usb_request_t, node)) != nullptr) {
+        ep->current_req = req;
+        if (ep->direction == EP_IN) {
+            usb_request_cache_flush(req, 0, req->header.length);
+        } else {
+            usb_request_cache_flush_invalidate(req, 0, req->header.length);
+        }
+
+
+        // TODO(voydanoff) scatter/gather support
+        phys_iter_t iter;
+        zx_paddr_t phys;
+        usb_request_physmap(req, bti_.get());
+        usb_request_phys_iter_init(&iter, req, PAGE_SIZE);
+        usb_request_phys_iter_next(&iter, &phys);
+//        bool send_zlp = req->header.send_zlp && (req->header.length % ep->max_packet_size) == 0;
+//        dwc3_ep_start_transfer(dwc, ep->ep_num, TRB_TRBCTL_NORMAL, phys, req->header.length,
+//                               send_zlp);
+
+    }
+}
+
 
 void MtUsb::FifoRead(uint8_t ep_index, void* buf, size_t buflen, size_t* actual) {
     auto* mmio = usb_mmio();

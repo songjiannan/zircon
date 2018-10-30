@@ -64,10 +64,6 @@ private:
     };
 
     struct Endpoint {
-        // Requests waiting to be processed.
-        list_node_t queued_reqs;
-        // request currently being processed.
-        usb_request_t* current_req;
         // Endpoint number to use when indexing into hardware registers.
         uint32_t ep_num;
         EpDirection direction;
@@ -75,7 +71,12 @@ private:
         uint8_t dma_channel;
         bool enabled;
 
-        fbl::Mutex lock;    
+        // Requests waiting to be processed.
+        list_node_t queued_reqs __TA_GUARDED(lock);
+        // request currently being processed.
+        usb_request_t* current_req __TA_GUARDED(lock);
+
+        fbl::Mutex lock;
     };
 
     zx_status_t Init();
@@ -88,6 +89,7 @@ private:
     void HandleEp0();
     void FifoRead(uint8_t ep_index, void* buf, size_t buflen, size_t* actual);
     void FifoWrite(uint8_t ep_index, const void* buf, size_t length);
+    void EpQueueNextLocked(Endpoint* ep) __TA_REQUIRES(ep->lock);
 
     static uint8_t EpAddressToIndex(uint8_t addr);
 
