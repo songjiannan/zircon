@@ -485,18 +485,18 @@ public:
     DEF_BIT(11, dma_chan);
     DEF_FIELD(10, 9, burst_mode);
     DEF_BIT(8, buserr);
-    DEF_FIELD(7, 4, endpt);
+    DEF_FIELD(7, 4, endpoint);
     DEF_BIT(3, inten);
     DEF_BIT(2, dmamode);
-    DEF_BIT(1, ahbwait_sel);
-    DEF_BIT(0, dmadir);
+    DEF_BIT(1, dir);
+    DEF_BIT(0, enable);
     static auto Get(uint32_t n) { return hwreg::RegisterAddr<DMA_CNTL>(0x204 + n * 0x10); }
 };
 
 // DMA Channel n Address Register
 class DMA_ADDR : public hwreg::RegisterBase<DMA_ADDR, uint32_t> {
 public:
-    DEF_FIELD(7, 0, limiter);
+    DEF_FIELD(31, 0, addr);
     static auto Get(uint32_t n) { return hwreg::RegisterAddr<DMA_ADDR>(0x208 + n * 0x10); }
 };
 

@@ -65,16 +65,17 @@ private:
 
     struct Endpoint {
         // Endpoint number to use when indexing into hardware registers.
-        uint32_t ep_num;
+        uint8_t ep_num;
         EpDirection direction;
         // DMA channel number allocated to this endpoint.
         uint8_t dma_channel;
-        bool enabled;
+        bool enabled  __TA_GUARDED(lock) = false;
+        uint16_t max_packet_size;
 
         // Requests waiting to be processed.
         list_node_t queued_reqs __TA_GUARDED(lock);
         // request currently being processed.
-        usb_request_t* current_req __TA_GUARDED(lock);
+        usb_request_t* current_req __TA_GUARDED(lock) = nullptr;
 
         fbl::Mutex lock;
     };
@@ -90,6 +91,8 @@ private:
     void FifoRead(uint8_t ep_index, void* buf, size_t buflen, size_t* actual);
     void FifoWrite(uint8_t ep_index, const void* buf, size_t length);
     void EpQueueNextLocked(Endpoint* ep) __TA_REQUIRES(ep->lock);
+    void StartEndpoint(Endpoint* ep);
+    void StartEndpoints();
 
     static uint8_t EpAddressToIndex(uint8_t addr);
 
@@ -118,13 +121,16 @@ private:
 
     // Number of endpoints we support, not counting ep0.
     // We are limited to 8 DMA channels so we will really allow a total of 8.
-    // But we use 16 here since we keep IN and OUT endpoints separate in the "eps" array.
+    // But we use 16 here since we keep IN and OUT endpoints separate in the "eps_" array.
     static constexpr size_t NUM_EPS = 16;
-    Endpoint eps[NUM_EPS];
+    Endpoint eps_[NUM_EPS];
 
     // Address assigned to us by the host.
     uint8_t address_ = 0;
     bool set_address_ = false;
+
+    // Current USB configuration. TODO this needs a lock.
+    uint8_t configuration_ = 0;
 
     Ep0State ep0_state_ = EP0_IDLE;
     usb_setup_t cur_setup_;

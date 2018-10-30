@@ -24,6 +24,7 @@
 #include <fbl/auto_lock.h>
 #include <fbl/unique_ptr.h>
 #include <usb/usb-request.h>
+#include <zircon/assert.h>
 
 #include "mt-usb-regs.h"
 #include "mt-usb-phy-regs.h"
@@ -82,10 +83,10 @@ zx_status_t MtUsb::Create(zx_device_t* parent) {
 }
 
 void MtUsb::InitEndpoints() {
-    for (uint8_t i = 0; i < countof(eps); i++) {
-        auto* ep = &eps[i];
+    for (uint8_t i = 0; i < countof(eps_); i++) {
+        auto* ep = &eps_[i];
         ep->direction = (i & 1 ? EP_IN : EP_OUT);
-        ep->ep_num = i / 2 + 1;
+        ep->ep_num = static_cast<uint8_t>(i / 2 + 1);
         list_initialize(&ep->queued_reqs);
 
         fbl::AutoLock lock(&ep->lock);
@@ -205,6 +206,7 @@ void MtUsb::HandleReset() {
         .WriteTo(mmio);
     address_ = 0;
     set_address_ = false;
+    configuration_ = 0;
 
 /* ???
     INTRTXE::Get()
@@ -283,35 +285,49 @@ printf("case EP0_IDLE\n");
                 return;
             }
 
+            usb_setup_t* setup = &cur_setup_;
             size_t actual;
-            FifoRead(0, &cur_setup_, sizeof(cur_setup_), &actual);
+            FifoRead(0, setup, sizeof(*setup), &actual);
             if (actual != sizeof(cur_setup_)) {
                 zxlogf(ERROR, "%s: setup read only read %zu bytes\n", __func__, actual);
                 return;
             }
             zxlogf(INFO, "SETUP bmRequestType %x bRequest %u wValue %u wIndex %u wLength %u\n",
-                   cur_setup_.bmRequestType, cur_setup_.bRequest, cur_setup_.wValue,
-                   cur_setup_.wIndex, cur_setup_.wLength);
+                   setup->bmRequestType, setup->bRequest, setup->wValue, setup->wIndex,
+                   setup->wLength);
             
-            if (cur_setup_.wLength > 0 && (cur_setup_.bmRequestType & USB_DIR_MASK) == USB_DIR_OUT) {
+            if (setup->wLength > 0 && (setup->bmRequestType & USB_DIR_MASK) == USB_DIR_OUT) {
                 ep0_state_ = EP0_READ;
                 ep0_data_offset_ = 0;
-                ep0_data_length_ = cur_setup_.wLength;
+                ep0_data_length_ = setup->wLength;
 
 // TODO update CSR0_PERI here?
                 break;
             } else {
                 size_t actual = 0;
 
-                if (cur_setup_.bmRequestType == (USB_DIR_OUT | USB_TYPE_STANDARD | USB_RECIP_DEVICE)
-                    && cur_setup_.bRequest == USB_REQ_SET_ADDRESS) {
-printf("SET_ADDRESS %u\n", cur_setup_.wValue);
-
-                    address_ = static_cast<uint8_t>(cur_setup_.wValue);
+                // Handle some special setup requests in this driver.
+                if (setup->bmRequestType == (USB_DIR_OUT | USB_TYPE_STANDARD | USB_RECIP_DEVICE) &&
+                    setup->bRequest == USB_REQ_SET_ADDRESS) {
+                    zxlogf(TRACE, "SET_ADDRESS %u\n", setup->wValue);
+                    address_ = static_cast<uint8_t>(setup->wValue);
                     set_address_ = true;
+                } else if (setup->bmRequestType == (USB_DIR_OUT | USB_TYPE_STANDARD | USB_RECIP_DEVICE) &&
+                           setup->bRequest == USB_REQ_SET_CONFIGURATION) {
+                    configuration_ = 0;
+                    auto status = dci_intf_->Control(setup, nullptr, 0, nullptr, 0, &actual);
+                    if (status != ZX_OK) {
+                        // TODO error handling
+                        zxlogf(ERROR, "%s: USB_REQ_SET_CONFIGURATION Control returned %d\n", __func__, status);
+                        return;
+                    }
+                    configuration_ = static_cast<uint8_t>(setup->wValue);
+printf("XXXXX SET CONFIGURATION %u\n", configuration_);
+                    if (configuration_) {
+                        StartEndpoints();
+                    }
                 } else {
-                    // TODO handle SET_CONFIGURATION?
-                    auto status = dci_intf_->Control(&cur_setup_, nullptr, 0, ep0_data_, sizeof(ep0_data_), &actual);
+                    auto status = dci_intf_->Control(setup, nullptr, 0, ep0_data_, sizeof(ep0_data_), &actual);
                     if (status != ZX_OK) {
                         // TODO error handling
                         zxlogf(ERROR, "%s: Control returned %d\n", __func__, status);
@@ -375,7 +391,10 @@ printf("flush dataend | txpktrdy\n");
 }
 
 void MtUsb::EpQueueNextLocked(Endpoint* ep) {
+    auto* mmio = usb_mmio();
     usb_request_t* req;
+
+printf("XXXXX EpQueueNextLocked %u\n", ep->ep_num);
 
     if (ep->current_req == nullptr &&
         (req = list_remove_head_type(&ep->queued_reqs, usb_request_t, node)) != nullptr) {
@@ -386,20 +405,54 @@ void MtUsb::EpQueueNextLocked(Endpoint* ep) {
             usb_request_cache_flush_invalidate(req, 0, req->header.length);
         }
 
-
-        // TODO(voydanoff) scatter/gather support
         phys_iter_t iter;
         zx_paddr_t phys;
         usb_request_physmap(req, bti_.get());
         usb_request_phys_iter_init(&iter, req, PAGE_SIZE);
         usb_request_phys_iter_next(&iter, &phys);
-//        bool send_zlp = req->header.send_zlp && (req->header.length % ep->max_packet_size) == 0;
-//        dwc3_ep_start_transfer(dwc, ep->ep_num, TRB_TRBCTL_NORMAL, phys, req->header.length,
-//                               send_zlp);
+        // This controller only supports 32-bit addresses
+        ZX_DEBUG_ASSERT(phys < UINT32_MAX);
 
+        // TODO(voydanoff) scatter/gather support
+        size_t length = req->header.length;
+        ZX_DEBUG_ASSERT(length <= PAGE_SIZE);
+//        bool send_zlp = req->header.send_zlp && (length % ep->max_packet_size) == 0;
+
+        uint32_t dma_channel = ep->dma_channel;
+
+printf("XXXXX EpQueueNextLocked dma_channel %u ep_num %u\n", dma_channel, ep->ep_num);
+
+        DMA_ADDR::Get(dma_channel)
+            .FromValue(0)
+            .set_addr(static_cast<uint32_t>(phys))
+            .WriteTo(mmio);
+        DMA_COUNT::Get(dma_channel)
+            .FromValue(0)
+            .set_count(static_cast<uint32_t>(length))
+            .WriteTo(mmio);
+        DMA_CNTL::Get(dma_channel)
+            .FromValue(0)
+            .set_burst_mode(3)
+            .set_endpoint(ep->ep_num)
+            .set_dir(ep->direction == EP_IN ? 1 : 0)
+            .set_enable(1)
+            .WriteTo(mmio);
     }
 }
 
+void MtUsb::StartEndpoint(Endpoint* ep) {
+    fbl::AutoLock lock(&ep->lock);
+
+    if (ep->enabled) {
+        EpQueueNextLocked(ep);
+    }
+}
+
+void MtUsb::StartEndpoints() {
+    for (size_t i = 0; i < countof(eps_); i++) {
+        StartEndpoint(&eps_[i]);
+    }
+}
 
 void MtUsb::FifoRead(uint8_t ep_index, void* buf, size_t buflen, size_t* actual) {
     auto* mmio = usb_mmio();
@@ -520,8 +573,12 @@ int MtUsb::IrqThread() {
         auto intrrx = INTRRX::Get().ReadFrom(mmio).WriteTo(mmio);
         auto intrusb = INTRUSB::Get().ReadFrom(mmio).WriteTo(mmio);
 
+printf("INTRTX\n");
         intrtx.Print();
+printf("INTRRX\n");
         intrrx.Print();
+printf("INTRUSB\n");
+        intrusb.Print();
 
         if (intrusb.suspend()) {
             printf("    SUSPEND\n");
@@ -552,12 +609,15 @@ void MtUsb::DdkRelease() {
 }
 
 void MtUsb::UsbDciRequestQueue(usb_request_t* req) {
+
+printf("XXXXX UsbDciRequestQueue address %02x\n", req->header.ep_address);
+
     uint8_t ep_index = EpAddressToIndex(req->header.ep_address);
-    if (ep_index >= countof(eps)) {
+    if (ep_index >= countof(eps_)) {
         zxlogf(ERROR, "%s: invalid endpoint address %02x\n", __func__, req->header.ep_address);
         return;
     }
-    Endpoint* ep = &eps[ep_index];
+    Endpoint* ep = &eps_[ep_index];
 
     fbl::AutoLock lock(&ep->lock);
 
@@ -567,8 +627,7 @@ void MtUsb::UsbDciRequestQueue(usb_request_t* req) {
     }
 
     list_add_tail(&ep->queued_reqs, &req->node);
-
-    // TODO - kick off the transaction
+    EpQueueNextLocked(ep);
 }
  
 zx_status_t MtUsb::UsbDciSetInterface(const usb_dci_interface_t* interface) {
@@ -600,13 +659,17 @@ zx_status_t MtUsb::UsbDciSetInterface(const usb_dci_interface_t* interface) {
     auto* mmio = usb_mmio();
     auto ep_address = ep_desc->bEndpointAddress;
     auto ep_index = EpAddressToIndex(ep_address);
+printf("XXXXX UsbDciConfigEp address %02x configuration_ %u\n", ep_address, configuration_);
 
-    if (ep_index >= countof(eps)) {
+    if (ep_index >= countof(eps_)) {
         zxlogf(ERROR, "%s: endpoint address %02x too large\n", __func__, ep_address);
         return ZX_ERR_OUT_OF_RANGE;
     }
 
-    Endpoint* ep = &eps[ep_index];
+    Endpoint* ep = &eps_[ep_index];
+
+    fbl::AutoLock lock(&ep->lock);
+
     if (ep->enabled) {
         return ZX_ERR_BAD_STATE;
     }
@@ -629,8 +692,12 @@ zx_status_t MtUsb::UsbDciSetInterface(const usb_dci_interface_t* interface) {
             .set_maximum_payload_transaction(max_packet_size)
             .WriteTo(mmio);
     }
-
+    ep->max_packet_size = max_packet_size;
     ep->enabled = true;
+
+    if (configuration_) {
+        EpQueueNextLocked(ep);
+    }
 
     return ZX_OK;
 }
