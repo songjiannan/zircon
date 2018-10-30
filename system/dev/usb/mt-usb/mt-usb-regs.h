@@ -468,6 +468,61 @@ public:
     static auto Get(uint32_t ep) { return hwreg::RegisterAddr<FIFOSIZE>(0x10f + ep * 4); }
 };
 
+// DMA Interrupt Status Register
+class DMA_INTR : public hwreg::RegisterBase<DMA_INTR, uint32_t> {
+public:
+    DEF_FIELD(31, 24, unmask_set);
+    DEF_FIELD(23, 16, unmask_clear);
+    DEF_FIELD(15, 8, unmask);
+    DEF_FIELD(7, 0, status);
+    static auto Get() { return hwreg::RegisterAddr<DMA_INTR>(0x200); }
+};
 
+// DMA Channel n Control Register
+class DMA_CNTL : public hwreg::RegisterBase<DMA_CNTL, uint16_t> {
+public:
+    DEF_BIT(13, dma_abort);
+    DEF_BIT(11, dma_chan);
+    DEF_FIELD(10, 9, burst_mode);
+    DEF_BIT(8, buserr);
+    DEF_FIELD(7, 4, endpt);
+    DEF_BIT(3, inten);
+    DEF_BIT(2, dmamode);
+    DEF_BIT(1, ahbwait_sel);
+    DEF_BIT(0, dmadir);
+    static auto Get(uint32_t n) { return hwreg::RegisterAddr<DMA_CNTL>(0x204 + n * 0x10); }
+};
+
+// DMA Channel n Address Register
+class DMA_ADDR : public hwreg::RegisterBase<DMA_ADDR, uint32_t> {
+public:
+    DEF_FIELD(7, 0, limiter);
+    static auto Get(uint32_t n) { return hwreg::RegisterAddr<DMA_ADDR>(0x208 + n * 0x10); }
+};
+
+// DMA Channel n Address Register
+class DMA_COUNT : public hwreg::RegisterBase<DMA_COUNT, uint32_t> {
+public:
+    DEF_FIELD(23, 0, count);
+    static auto Get(uint32_t n) { return hwreg::RegisterAddr<DMA_COUNT>(0x20C + n * 0x10); }
+};
+
+// DMA Limiter Register
+class DMA_LIMITER : public hwreg::RegisterBase<DMA_LIMITER, uint32_t> {
+public:
+    DEF_FIELD(7, 0, limiter);
+    static auto Get() { return hwreg::RegisterAddr<DMA_LIMITER>(0x210); }
+};
+
+// DMA Configuration Register
+class DMA_CONFIG : public hwreg::RegisterBase<DMA_CONFIG, uint32_t> {
+public:
+    DEF_FIELD(11, 10, dma_active_en);
+    DEF_FIELD(9, 8, ahb_hprot_2_en);
+    DEF_FIELD(6, 4, dmaq_chan_sel);
+    DEF_BIT(1, ahbwait_sel);
+    DEF_BIT(0, boundary_1k_cross_en);
+    static auto Get() { return hwreg::RegisterAddr<DMA_CONFIG>(0x220); }
+};
 
 } // namespace mt_usb

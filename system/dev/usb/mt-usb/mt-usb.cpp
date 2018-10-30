@@ -236,6 +236,10 @@ printf("ep0_max_packet_ %u\n", ep0_max_packet_);
         .FromValue(0)
         .set_maximum_payload_transaction(ep0_max_packet_)
         .WriteTo(mmio);
+    RXMAP::Get(0)
+        .FromValue(0)
+        .set_maximum_payload_transaction(ep0_max_packet_)
+        .WriteTo(mmio);
 
     // TODO mt_udc_rxtxmap_recover()
 }
@@ -564,19 +568,40 @@ zx_status_t MtUsb::UsbDciSetInterface(const usb_dci_interface_t* interface) {
 
  zx_status_t MtUsb::UsbDciConfigEp(const usb_endpoint_descriptor_t* ep_desc,
                                    const usb_ss_ep_comp_descriptor_t* ss_comp_desc) {
-    uint8_t ep_index = EpAddressToIndex(ep_desc->bEndpointAddress);
+    auto* mmio = usb_mmio();
+    auto ep_address = ep_desc->bEndpointAddress;
+    auto ep_index = EpAddressToIndex(ep_address);
+
     if (ep_index >= countof(eps)) {
-        zxlogf(ERROR, "%s: endpoint address %02x too large\n", __func__, ep_desc->bEndpointAddress);
+        zxlogf(ERROR, "%s: endpoint address %02x too large\n", __func__, ep_address);
         return ZX_ERR_OUT_OF_RANGE;
     }
 
     Endpoint* ep = &eps[ep_index];
+    if (ep->enabled) {
+        return ZX_ERR_BAD_STATE;
+    }
     auto status = AllocDmaChannel(ep);
     if (status != ZX_OK) {
         zxlogf(ERROR, "%s: AllocDmaChannel failed for endpoint %02x: %d\n", __func__,
                ep_desc->bEndpointAddress, status);
         return status;
     }
+
+    uint16_t max_packet_size = usb_ep_max_packet(ep_desc);
+    if ((ep_address & USB_DIR_MASK) == USB_DIR_IN) {
+        TXMAP::Get(ep_index)
+            .FromValue(0)
+            .set_maximum_payload_transaction(max_packet_size)
+            .WriteTo(mmio);
+    } else {
+        RXMAP::Get(ep_index)
+            .FromValue(0)
+            .set_maximum_payload_transaction(max_packet_size)
+            .WriteTo(mmio);
+    }
+
+    ep->enabled = true;
 
     return ZX_OK;
 }
