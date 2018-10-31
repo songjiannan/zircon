@@ -239,7 +239,7 @@ public:
 };
 
 // USB Level 1 Interrupt Status Register
-class USB_L1INTS : public hwreg::RegisterBase<USB_L1INTS, uint32_t> {
+class USB_L1INTS : public hwreg::RegisterBase<USB_L1INTS, uint32_t, hwreg::EnablePrinter> {
 public:
     DEF_BIT(11, powerdwn);
     DEF_BIT(10, drvvbus);
@@ -290,8 +290,6 @@ public:
     DEF_BIT(0, usb_int_sync);
     static auto Get() { return hwreg::RegisterAddr<USB_L1INTC>(0xac); }
 };
-
-
 
 // EP0 Control Status Register (peripheral mode)
 class CSR0_PERI : public hwreg::RegisterBase<CSR0_PERI, uint16_t, hwreg::EnablePrinter> {
@@ -469,7 +467,7 @@ public:
 };
 
 // DMA Interrupt Status Register
-class DMA_INTR : public hwreg::RegisterBase<DMA_INTR, uint32_t> {
+class DMA_INTR : public hwreg::RegisterBase<DMA_INTR, uint32_t, hwreg::EnablePrinter> {
 public:
     DEF_FIELD(31, 24, unmask_set);
     DEF_FIELD(23, 16, unmask_clear);
@@ -479,7 +477,7 @@ public:
 };
 
 // DMA Channel n Control Register
-class DMA_CNTL : public hwreg::RegisterBase<DMA_CNTL, uint16_t> {
+class DMA_CNTL : public hwreg::RegisterBase<DMA_CNTL, uint16_t, hwreg::EnablePrinter> {
 public:
     DEF_BIT(13, dma_abort);
     DEF_BIT(11, dma_chan);

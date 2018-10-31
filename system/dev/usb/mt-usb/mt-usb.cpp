@@ -322,7 +322,6 @@ printf("case EP0_IDLE\n");
                         return;
                     }
                     configuration_ = static_cast<uint8_t>(setup->wValue);
-printf("XXXXX SET CONFIGURATION %u\n", configuration_);
                     if (configuration_) {
                         StartEndpoints();
                     }
@@ -335,7 +334,6 @@ printf("XXXXX SET CONFIGURATION %u\n", configuration_);
                     }
                 }
 
-printf("actual: %zu\n", actual);
                 if (actual > 0) {
                     ep0_state_ = EP0_WRITE;
                     ep0_data_offset_ = 0;
@@ -352,6 +350,7 @@ printf("actual: %zu\n", actual);
                 csr0.WriteTo(mmio);
                 csr0.WriteTo(mmio); // ???
 
+// ????
 if (ep0_state_ == EP0_IDLE) {
     return;
 }
@@ -394,7 +393,7 @@ void MtUsb::EpQueueNextLocked(Endpoint* ep) {
     auto* mmio = usb_mmio();
     usb_request_t* req;
 
-printf("XXXXX EpQueueNextLocked %u\n", ep->ep_num);
+// printf("XXXXX EpQueueNextLocked %u\n", ep->ep_num);
 
     if (ep->current_req == nullptr &&
         (req = list_remove_head_type(&ep->queued_reqs, usb_request_t, node)) != nullptr) {
@@ -434,9 +433,17 @@ printf("XXXXX EpQueueNextLocked dma_channel %u ep_num %u\n", dma_channel, ep->ep
             .FromValue(0)
             .set_burst_mode(3)
             .set_endpoint(ep->ep_num)
+            .set_inten(1)
             .set_dir(ep->direction == EP_IN ? 1 : 0)
             .set_enable(1)
-            .WriteTo(mmio);
+            .WriteTo(mmio).Print();
+
+//while (DMA_CNTL::Get(dma_channel).ReadFrom(mmio).enable()) {
+//printf("XXXXX spin\n");
+//sleep(1);
+//}
+
+
     }
 }
 
@@ -531,6 +538,9 @@ int MtUsb::IrqThread() {
     // Enable interrupts
     uint16_t intrtx = (1 << 0);
     uint16_t intrrx = (1 << 0);
+
+// REMOVE
+intrtx = intrrx = 0x1ff;
     
     INTRTXE::Get()
         .FromValue(intrtx)
@@ -558,6 +568,12 @@ int MtUsb::IrqThread() {
         .set_dma(1)
         .WriteTo(mmio);
 
+    DMA_INTR::Get()
+        .FromValue(0)
+        .set_unmask_set(0xff)
+        .set_status(0xff)
+        .WriteTo(mmio);
+
     while (true) {
         auto status = irq_.wait(nullptr);
         if (status == ZX_ERR_CANCELED) {
@@ -570,15 +586,16 @@ int MtUsb::IrqThread() {
 
         // Write back these registers to acknowledge the interrupts
         auto intrtx = INTRTX::Get().ReadFrom(mmio).WriteTo(mmio);
-        auto intrrx = INTRRX::Get().ReadFrom(mmio).WriteTo(mmio);
+        __UNUSED auto intrrx = INTRRX::Get().ReadFrom(mmio).WriteTo(mmio);
         auto intrusb = INTRUSB::Get().ReadFrom(mmio).WriteTo(mmio);
+        __UNUSED auto l1ints = USB_L1INTS::Get().ReadFrom(mmio).WriteTo(mmio);
+        auto dma_intr = DMA_INTR::Get().ReadFrom(mmio); // .WriteTo(mmio); ????
 
-printf("INTRTX\n");
-        intrtx.Print();
-printf("INTRRX\n");
-        intrrx.Print();
-printf("INTRUSB\n");
-        intrusb.Print();
+//        intrtx.Print();
+//        intrrx.Print();
+//        intrusb.Print();
+        l1ints.Print();
+        dma_intr.Print();
 
         if (intrusb.suspend()) {
             printf("    SUSPEND\n");
@@ -610,7 +627,7 @@ void MtUsb::DdkRelease() {
 
 void MtUsb::UsbDciRequestQueue(usb_request_t* req) {
 
-printf("XXXXX UsbDciRequestQueue address %02x\n", req->header.ep_address);
+printf("UsbDciRequestQueue address %02x\n", req->header.ep_address);
 
     uint8_t ep_index = EpAddressToIndex(req->header.ep_address);
     if (ep_index >= countof(eps_)) {
@@ -659,7 +676,7 @@ zx_status_t MtUsb::UsbDciSetInterface(const usb_dci_interface_t* interface) {
     auto* mmio = usb_mmio();
     auto ep_address = ep_desc->bEndpointAddress;
     auto ep_index = EpAddressToIndex(ep_address);
-printf("XXXXX UsbDciConfigEp address %02x configuration_ %u\n", ep_address, configuration_);
+printf("UsbDciConfigEp address %02x configuration_ %u\n", ep_address, configuration_);
 
     if (ep_index >= countof(eps_)) {
         zxlogf(ERROR, "%s: endpoint address %02x too large\n", __func__, ep_address);
@@ -678,6 +695,19 @@ printf("XXXXX UsbDciConfigEp address %02x configuration_ %u\n", ep_address, conf
         zxlogf(ERROR, "%s: AllocDmaChannel failed for endpoint %02x: %d\n", __func__,
                ep_desc->bEndpointAddress, status);
         return status;
+    }
+
+    // TODO synchronize here?
+    if (ep->direction == EP_IN) {    
+        auto intrtxe = INTRTXE::Get().ReadFrom(mmio);
+        uint16_t mask = intrtxe.ep_tx();
+        mask |= static_cast<uint16_t>(1 << ep->ep_num);
+        intrtxe.set_ep_tx(mask).WriteTo(mmio);
+    } else {
+        auto intrrxe = INTRRXE::Get().ReadFrom(mmio);
+        uint16_t mask = intrrxe.ep_rx();
+        mask |= static_cast<uint16_t>(1 << ep->ep_num);
+        intrrxe.set_ep_rx(mask).WriteTo(mmio);
     }
 
     uint16_t max_packet_size = usb_ep_max_packet(ep_desc);
