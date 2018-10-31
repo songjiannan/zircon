@@ -88,6 +88,8 @@ private:
     void HandleSuspend();
     void HandleReset();
     void HandleEp0();
+    void HandleDma();
+
     void FifoRead(uint8_t ep_index, void* buf, size_t buflen, size_t* actual);
     void FifoWrite(uint8_t ep_index, const void* buf, size_t length);
     void EpQueueNextLocked(Endpoint* ep) __TA_REQUIRES(ep->lock);

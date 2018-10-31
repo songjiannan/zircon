@@ -389,11 +389,31 @@ printf("flush dataend | txpktrdy\n");
     }
 }
 
+void MtUsb::HandleDma() {
+    auto* mmio = usb_mmio();
+
+printf("HandleDma\n");
+    auto dma_intr = DMA_INTR::Get().ReadFrom(mmio).WriteTo(mmio);
+    dma_intr.Print();
+    auto status = dma_intr.status();
+    
+    for (uint32_t channel = 0; channel < DMA_CHANNEL_COUNT; channel++) {
+        if (status & (1 << channel)) {
+printf("DMA interrupt for channel %u\n", channel);
+        
+            auto dma_cntl = DMA_CNTL::Get(channel).ReadFrom(mmio);
+            if (dma_cntl.dma_abort()) {
+                printf("XXXXX dma_abort for channel %u\n", channel);
+            }
+        }
+    }
+}
+
 void MtUsb::EpQueueNextLocked(Endpoint* ep) {
     auto* mmio = usb_mmio();
     usb_request_t* req;
 
-// printf("XXXXX EpQueueNextLocked %u\n", ep->ep_num);
+printf("XXXXX EpQueueNextLocked %u\n", ep->ep_num);
 
     if (ep->current_req == nullptr &&
         (req = list_remove_head_type(&ep->queued_reqs, usb_request_t, node)) != nullptr) {
@@ -419,7 +439,7 @@ void MtUsb::EpQueueNextLocked(Endpoint* ep) {
 
         uint32_t dma_channel = ep->dma_channel;
 
-printf("XXXXX EpQueueNextLocked dma_channel %u ep_num %u\n", dma_channel, ep->ep_num);
+printf("XXXXX START DMA channel %u ep_num %u length %zu\n", dma_channel, ep->ep_num, length);
 
         DMA_ADDR::Get(dma_channel)
             .FromValue(0)
@@ -588,14 +608,12 @@ intrtx = intrrx = 0x1ff;
         auto intrtx = INTRTX::Get().ReadFrom(mmio).WriteTo(mmio);
         __UNUSED auto intrrx = INTRRX::Get().ReadFrom(mmio).WriteTo(mmio);
         auto intrusb = INTRUSB::Get().ReadFrom(mmio).WriteTo(mmio);
-        __UNUSED auto l1ints = USB_L1INTS::Get().ReadFrom(mmio).WriteTo(mmio);
-        auto dma_intr = DMA_INTR::Get().ReadFrom(mmio); // .WriteTo(mmio); ????
+        auto l1ints = USB_L1INTS::Get().ReadFrom(mmio).WriteTo(mmio);
 
 //        intrtx.Print();
 //        intrrx.Print();
 //        intrusb.Print();
-        l1ints.Print();
-        dma_intr.Print();
+//        l1ints.Print();
 
         if (intrusb.suspend()) {
             printf("    SUSPEND\n");
@@ -608,6 +626,10 @@ intrtx = intrrx = 0x1ff;
 
         if (intrtx.ep_tx() & (1 << 0)) {
             HandleEp0();
+        }
+
+        if (l1ints.dma()) {
+            HandleDma();
         }
 
         if (intrusb.discon()) printf("    DISCONNECT\n");
