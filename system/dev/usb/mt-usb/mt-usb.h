@@ -89,6 +89,8 @@ private:
     void HandleReset();
     void HandleEp0();
     void HandleDma();
+    void HandleEndpointTx(Endpoint* ep);
+    void HandleEndpointRx(Endpoint* ep);
 
     void FifoRead(uint8_t ep_index, void* buf, size_t buflen, size_t* actual);
     void FifoWrite(uint8_t ep_index, const void* buf, size_t length);
@@ -125,7 +127,13 @@ private:
     // We are limited to 8 DMA channels so we will really allow a total of 8.
     // But we use 16 here since we keep IN and OUT endpoints separate in the "eps_" array.
     static constexpr size_t NUM_EPS = 16;
+
+    // Endpoints are mapped 0x01 -> 0, 0x81 -> 1, 0x02 -> 2, 0x82 -> 3, ...
+    // Even index: OUT, odd index: IN.
     Endpoint eps_[NUM_EPS];
+
+    // Maps DMA channels to the endpoints that use them.
+    Endpoint* dma_eps_[DMA_CHANNEL_COUNT] = {};
 
     // Address assigned to us by the host.
     uint8_t address_ = 0;
@@ -145,9 +153,6 @@ private:
     size_t ep0_data_length_ = 0;
 
     uint8_t ep0_max_packet_;
-
-    // Bitfield of allocated DMA channels
-    uint32_t dma_channel_alloc_ = 0;
 };
 
 } // namespace mt_usb
