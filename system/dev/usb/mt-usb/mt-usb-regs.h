@@ -327,7 +327,7 @@ class TXMAP : public hwreg::RegisterBase<TXMAP, uint16_t> {
 public:
     DEF_FIELD(12, 11, m_1);
     DEF_FIELD(10, 0, maximum_payload_transaction);
-    static auto Get(uint32_t ep) { return hwreg::RegisterAddr<TXMAP>(0x100 + ep * 4); }
+    static auto Get(uint32_t ep) { return hwreg::RegisterAddr<TXMAP>(0x100 + ep * 0x10); }
 };
 
 // TX CSR Register (peripheral mode)
@@ -347,7 +347,7 @@ public:
     DEF_BIT(2, underrun);
     DEF_BIT(1, fifoempty);
     DEF_BIT(0, txpktrdy);
-    static auto Get(uint32_t ep) { return hwreg::RegisterAddr<TXCSR_PERI>(0x102 + ep * 4); }
+    static auto Get(uint32_t ep) { return hwreg::RegisterAddr<TXCSR_PERI>(0x102 + ep * 0x10); }
 };
 
 // TX CSR Register (host mode)
@@ -365,7 +365,7 @@ public:
     DEF_BIT(2, error);
     DEF_BIT(1, fifonotempty);
     DEF_BIT(0, txpktrdy);
-    static auto Get(uint32_t ep) { return hwreg::RegisterAddr<TXCSR_HOST>(0x102 + ep * 4); }
+    static auto Get(uint32_t ep) { return hwreg::RegisterAddr<TXCSR_HOST>(0x102 + ep * 0x10); }
 };
 
 // RXMAP Register
@@ -373,7 +373,7 @@ class RXMAP : public hwreg::RegisterBase<RXMAP, uint16_t> {
 public:
     DEF_FIELD(12, 11, m_1);
     DEF_FIELD(10, 0, maximum_payload_transaction);
-    static auto Get(uint32_t ep) { return hwreg::RegisterAddr<RXMAP>(0x104 + ep * 4); }
+    static auto Get(uint32_t ep) { return hwreg::RegisterAddr<RXMAP>(0x104 + ep * 0x10); }
 };
 
 // RX CSR Register (peripheral mode)
@@ -394,7 +394,7 @@ public:
     DEF_BIT(2, overrun);
     DEF_BIT(1, fifofull);
     DEF_BIT(0, rxpktrdy);
-    static auto Get(uint32_t ep) { return hwreg::RegisterAddr<RXCSR_PERI>(0x106 + ep * 4); }
+    static auto Get(uint32_t ep) { return hwreg::RegisterAddr<RXCSR_PERI>(0x106 + ep * 0x10); }
 };
 
 // RX CSR Register (host mode)
@@ -416,14 +416,14 @@ public:
     DEF_BIT(2, error);
     DEF_BIT(1, fifofull);
     DEF_BIT(0, rxpktrdy);
-    static auto Get(uint32_t ep) { return hwreg::RegisterAddr<RXCSR_HOST>(0x106 + ep * 4); }
+    static auto Get(uint32_t ep) { return hwreg::RegisterAddr<RXCSR_HOST>(0x106 + ep * 0x10); }
 };
 
 // RX Count Register
 class RXCOUNT : public hwreg::RegisterBase<RXCOUNT, uint16_t> {
 public:
     DEF_FIELD(13, 0, rxcount);
-    static auto Get(uint32_t ep) { return hwreg::RegisterAddr<RXCOUNT>(0x108 + ep * 4); }
+    static auto Get(uint32_t ep) { return hwreg::RegisterAddr<RXCOUNT>(0x108 + ep * 0x10); }
 };
 
 // TX Type Register
@@ -432,7 +432,7 @@ public:
     DEF_FIELD(7, 6, tx_speed);
     DEF_FIELD(5, 4, tx_protocol);
     DEF_FIELD(3, 0, tx_target_ep_number);
-    static auto Get(uint32_t ep) { return hwreg::RegisterAddr<TXTYPE>(0x10a + ep * 4); }
+    static auto Get(uint32_t ep) { return hwreg::RegisterAddr<TXTYPE>(0x10a + ep * 0x10); }
 };
 
 // TX Interval Register
@@ -448,14 +448,14 @@ public:
     DEF_FIELD(7, 6, rx_speed);
     DEF_FIELD(5, 4, rx_protocol);
     DEF_FIELD(3, 0, rx_target_ep_number);
-    static auto Get(uint32_t ep) { return hwreg::RegisterAddr<RXTYPE>(0x10c + ep * 4); }
+    static auto Get(uint32_t ep) { return hwreg::RegisterAddr<RXTYPE>(0x10c + ep * 0x10); }
 };
 
 // RX Interval Register
 class RXINTERVAL : public hwreg::RegisterBase<RXINTERVAL, uint8_t> {
 public:
     DEF_FIELD(7, 0, rx_polling_interval_nak_limit_m);
-    static auto Get(uint32_t ep) { return hwreg::RegisterAddr<RXINTERVAL>(0x10d + ep * 4); }
+    static auto Get(uint32_t ep) { return hwreg::RegisterAddr<RXINTERVAL>(0x10d + ep * 0x10); }
 };
 
 // Configured FIFO Size Register
@@ -463,7 +463,7 @@ class FIFOSIZE : public hwreg::RegisterBase<FIFOSIZE, uint8_t> {
 public:
     DEF_FIELD(7, 4, rxfifosize);
     DEF_FIELD(3, 0, txfifosize);
-    static auto Get(uint32_t ep) { return hwreg::RegisterAddr<FIFOSIZE>(0x10f + ep * 4); }
+    static auto Get(uint32_t ep) { return hwreg::RegisterAddr<FIFOSIZE>(0x10f + ep * 0x10); }
 };
 
 // DMA Interrupt Status Register

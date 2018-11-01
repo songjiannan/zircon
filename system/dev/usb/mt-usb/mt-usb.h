@@ -19,6 +19,8 @@
 
 #include <threads.h>
 
+//#define USE_DMA 1
+
 namespace mt_usb {
 
 class MtUsb;
@@ -67,8 +69,12 @@ private:
         // Endpoint number to use when indexing into hardware registers.
         uint8_t ep_num;
         EpDirection direction;
+
+#ifdef USE_DMA
         // DMA channel number allocated to this endpoint.
         uint8_t dma_channel;
+#endif
+
         bool enabled  __TA_GUARDED(lock) = false;
         uint16_t max_packet_size;
 
@@ -88,7 +94,9 @@ private:
     void HandleSuspend();
     void HandleReset();
     void HandleEp0();
+#ifdef USE_DMA
     void HandleDma();
+#endif
     void HandleEndpointTx(Endpoint* ep);
     void HandleEndpointRx(Endpoint* ep);
 
@@ -100,11 +108,13 @@ private:
 
     static uint8_t EpAddressToIndex(uint8_t addr);
 
+#ifdef USE_DMA
     static constexpr uint8_t DMA_CHANNEL_COUNT = 8;
     static constexpr uint8_t DMA_CHANNEL_INVALID = 0xff;
 
     zx_status_t AllocDmaChannel(Endpoint* ep);
     void ReleaseDmaChannel(Endpoint* ep);
+#endif
 
     inline ddk::MmioBuffer* usb_mmio() {
         return &*usb_mmio_;
@@ -132,8 +142,10 @@ private:
     // Even index: OUT, odd index: IN.
     Endpoint eps_[NUM_EPS];
 
-    // Maps DMA channels to the endpoints that use them.
+#ifdef USE_DMA
+   // Maps DMA channels to the endpoints that use them.
     Endpoint* dma_eps_[DMA_CHANNEL_COUNT] = {};
+#endif
 
     // Address assigned to us by the host.
     uint8_t address_ = 0;
@@ -145,7 +157,6 @@ private:
     Ep0State ep0_state_ = EP0_IDLE;
     usb_setup_t cur_setup_;
 
-    // TODO make this a DMA buffer?
     uint8_t ep0_data_[UINT16_MAX];
     // Current read/write location in ep0_buffer_
     size_t ep0_data_offset_ = 0;

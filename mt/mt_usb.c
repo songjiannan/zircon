@@ -537,7 +537,7 @@ static int mt_write_fifo(struct udc_endpoint *endpoint)
 	DBG_I("%s: sent: %d, tx_pkt_size: %d\n", __func__, endpoint->sent, endpoint->maxpkt);
 #endif
 
-		count = last = MIN (urb->actual_length - endpoint->sent,  endpoint->maxpkt);
+		` = last = MIN (urb->actual_length - endpoint->sent,  endpoint->maxpkt);
 		//count = last = urb->actual_length;
 
 #if DBG_USB_FIFO
