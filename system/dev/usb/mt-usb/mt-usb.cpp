@@ -255,20 +255,6 @@ printf("ep0_max_packet_ %u\n", ep0_max_packet_);
         .WriteTo(mmio);
 
     // TODO mt_udc_rxtxmap_recover()
-
-    INDEX::Get().FromValue(0).set_selected_endpoint(0).WriteTo(mmio);
-    TXFIFOADD::Get().FromValue(0).set_txfifoadd(0).WriteTo(mmio);
-    RXFIFOADD::Get().FromValue(0).set_rxfifoadd(0).WriteTo(mmio);
-
-    uint32_t fifo_addr = 512;
-    for (uint8_t i = 1; i <= 4; i++) {
-        INDEX::Get().FromValue(0).set_selected_endpoint(i).WriteTo(mmio);
-
-        TXFIFOADD::Get().FromValue(0).set_txfifoadd(static_cast<uint16_t>(fifo_addr >> 3)).WriteTo(mmio);
-        fifo_addr += 512;
-        RXFIFOADD::Get().FromValue(0).set_rxfifoadd(static_cast<uint16_t>(fifo_addr >> 3)).WriteTo(mmio);
-        fifo_addr += 512;
-    }
 }
 
 void MtUsb::HandleEp0() {
@@ -531,7 +517,6 @@ void MtUsb::EpQueueNextLocked(Endpoint* ep) {
     __UNUSED auto* mmio = usb_mmio();
     usb_request_t* req;
 
-//printf("XXXXX EpQueueNextLocked %u\n", ep->ep_num);
 
     if (ep->current_req == nullptr &&
         (req = list_remove_head_type(&ep->queued_reqs, usb_request_t, node)) != nullptr) {
@@ -542,6 +527,7 @@ void MtUsb::EpQueueNextLocked(Endpoint* ep) {
             usb_request_cache_flush_invalidate(req, 0, req->header.length);
         }
 
+printf("XXXXX EpQueueNextLocked %u got req\n", ep->ep_num);
 
         // TODO(voydanoff) scatter/gather support
         size_t length = req->header.length;
@@ -586,7 +572,6 @@ printf("XXXXX START DMA channel %u ep_num %u length %zu phys %x direction %s\n",
             .WriteTo(mmio);
 
         if (ep->direction == EP_IN) {
-printf("set txpktrdy\n");
             TXCSR_PERI::Get(ep->ep_num)
                 .ReadFrom(mmio)
                 .set_txpktrdy(1)
@@ -599,7 +584,7 @@ printf("set txpktrdy\n");
             zxlogf(ERROR, "%s: usb_request_mmap failed %d\n", __func__, status);
             usb_request_complete(req, status, 0);
         } else {
-// crashes?            FifoWrite(ep->ep_num, vaddr, length);
+            FifoWrite(ep->ep_num, vaddr, length);
 
             TXCSR_PERI::Get(ep->ep_num)
                 .ReadFrom(mmio)
@@ -648,6 +633,9 @@ printf("FifoRead ep_index %u rxcount %zu\n", ep_index, count);
     auto remaining = count;
     auto dest = static_cast<uint32_t*>(buf);
 
+// needed?
+    INDEX::Get().FromValue(0).set_selected_endpoint(ep_index).WriteTo(mmio);
+
     while (remaining >= 4) {
         *dest++ = FIFO::Get(ep_index).ReadFrom(mmio).fifo_data();
         remaining -= 4;
@@ -671,9 +659,13 @@ printf("FifoWrite ep_index %u length %zu\n", ep_index, length);
     auto remaining = length;
     auto src = static_cast<const uint8_t*>(buf);
 
-    while (remaining > 0) {
-        FIFO_8::Get(ep_index).FromValue(0).set_fifo_data(*src++).WriteTo(mmio);
-        remaining--;
+// needed?
+    INDEX::Get().FromValue(0).set_selected_endpoint(ep_index).WriteTo(mmio);
+
+    auto fifo = FIFO_8::Get(ep_index).FromValue(0);
+
+    while (remaining-- > 0) {
+        fifo.set_fifo_data(*src++).WriteTo(mmio);
     }
 }
 
@@ -749,6 +741,14 @@ int MtUsb::IrqThread() {
         .WriteTo(mmio);
 #endif
 
+    for (uint8_t i = 1; i <= countof(eps_) / 2; i++) { 
+        INDEX::Get().FromValue(0).set_selected_endpoint(i).WriteTo(mmio);
+        TXFIFOADD::Get().FromValue(0).set_txfifoadd(static_cast<uint8_t>((2 * i + 1) * 512 / 8)).WriteTo(mmio);
+        RXFIFOADD::Get().FromValue(0).set_rxfifoadd(static_cast<uint8_t>((2 * i + 2) * 512 / 8)).WriteTo(mmio);
+        TXFIFOSZ::Get().FromValue(0).set_txdpb(0).set_txsz(6).WriteTo(mmio);
+        RXFIFOSZ::Get().FromValue(0).set_rxdpb(0).set_rxsz(6).WriteTo(mmio);
+    }
+
     while (true) {
         auto status = irq_.wait(nullptr);
         if (status == ZX_ERR_CANCELED) {
@@ -757,7 +757,7 @@ int MtUsb::IrqThread() {
             zxlogf(ERROR, "%s: irq_.wait failed: %d\n", __func__, status);
             return -1;
         }
-//        zxlogf(INFO, " \n%s: got interrupt!\n", __func__);
+        zxlogf(INFO, " \n%s: got interrupt!\n", __func__);
 
         // Write back these registers to acknowledge the interrupts
         auto intrtx = INTRTX::Get().ReadFrom(mmio).WriteTo(mmio);
@@ -765,7 +765,9 @@ int MtUsb::IrqThread() {
         auto intrusb = INTRUSB::Get().ReadFrom(mmio).WriteTo(mmio);
         __UNUSED auto l1ints = USB_L1INTS::Get().ReadFrom(mmio).WriteTo(mmio);
 
+//printf("INTRTX\n");
 //        intrtx.Print();
+//printf("INTRRX\n");
 //        intrrx.Print();
 //        intrusb.Print();
 //        l1ints.Print();
@@ -944,6 +946,46 @@ printf("UsbDciConfigEp address %02x configuration_ %u direction %u\n", ep_addres
             .set_maximum_payload_transaction(max_packet_size)
             .WriteTo(mmio);
     }
+
+/*
+    // allocate fifo
+    uint8_t fifo_size;
+    switch (max_packet_size) {
+    case 8:
+        fifo_size = 0;
+        break;
+     case 16:
+        fifo_size = 1;
+        break;
+     case 32:
+        fifo_size = 2;
+        break;
+     case 164:
+        fifo_size = 3;
+        break;
+     case 128:
+        fifo_size = 4;
+        break;
+     case 256:
+        fifo_size = 5;
+        break;
+     case 512:
+        fifo_size = 6;
+        break;
+     case 1024:
+        fifo_size = 7;
+        break;
+     case 2048:
+        fifo_size = 8;
+        break;
+     case 4096:
+        fifo_size = 9;
+        break;
+     default:
+        zxlogf(ERROR, "bad max packet size %u\n", max_packet_size);
+        return ZX_ERR_INVALID_ARGS;
+    }
+*/
     ep->max_packet_size = max_packet_size;
     ep->enabled = true;
 
