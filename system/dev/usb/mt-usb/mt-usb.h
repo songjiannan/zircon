@@ -84,7 +84,7 @@ private:
         usb_request_t* current_req __TA_GUARDED(lock) = nullptr;
 
         // Offset into current_req during read and write.
-        size_t current_req_offset;
+        size_t cur_offset;
 
         fbl::Mutex lock;
     };
@@ -100,8 +100,8 @@ private:
 #ifdef USE_DMA
     void HandleDma();
 #endif
-    void HandleEndpointTx(Endpoint* ep);
-    void HandleEndpointRx(Endpoint* ep);
+    void HandleEndpointTxLocked(Endpoint* ep) __TA_REQUIRES(ep->lock);
+    void HandleEndpointRxLocked(Endpoint* ep) __TA_REQUIRES(ep->lock);
 
     void FifoRead(uint8_t ep_index, void* buf, size_t buflen, size_t* actual);
     void FifoWrite(uint8_t ep_index, const void* buf, size_t length);

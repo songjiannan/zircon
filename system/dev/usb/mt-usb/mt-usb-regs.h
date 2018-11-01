@@ -345,7 +345,7 @@ public:
     DEF_BIT(4, sendstall);
     DEF_BIT(3, flushfifo);
     DEF_BIT(2, underrun);
-    DEF_BIT(1, fifoempty);
+    DEF_BIT(1, fifo_not_empty);
     DEF_BIT(0, txpktrdy);
     static auto Get(uint32_t ep) { return hwreg::RegisterAddr<TXCSR_PERI>(0x102 + ep * 0x10); }
 };

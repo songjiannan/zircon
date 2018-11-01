@@ -29,6 +29,49 @@
 #include "mt-usb-regs.h"
 #include "mt-usb-phy-regs.h"
 
+
+#ifdef USE_DMA // old dma stuff to reuse
+       phys_iter_t iter;
+        zx_paddr_t phys;
+        usb_request_physmap(req, bti_.get());
+        usb_request_phys_iter_init(&iter, req, PAGE_SIZE);
+        usb_request_phys_iter_next(&iter, &phys);
+        // This controller only supports 32-bit addresses
+        ZX_DEBUG_ASSERT(phys < UINT32_MAX);
+
+        uint32_t dma_channel = ep->dma_channel;
+
+printf("XXXXX START DMA channel %u ep_num %u length %zu phys %x direction %s\n", dma_channel, ep_num, length, (uint32_t)phys,
+(ep->direction == EP_IN ? "IN" : "OUT"));
+
+        DMA_ADDR::Get(dma_channel)
+            .FromValue(0)
+            .set_addr(static_cast<uint32_t>(phys))
+            .WriteTo(mmio);
+
+        DMA_COUNT::Get(dma_channel)
+            .FromValue(0)
+            .set_count(static_cast<uint32_t>(length))
+            .WriteTo(mmio);
+
+        DMA_CNTL::Get(dma_channel)
+            .FromValue(0)
+            .set_burst_mode(3)
+            .set_endpoint(ep_num)
+            .set_inten(1)
+            .set_dir(ep->direction == EP_IN ? 1 : 0)
+            .set_enable(1)
+            .WriteTo(mmio);
+
+        if (ep->direction == EP_IN) {
+            TXCSR_PERI::Get(ep_num)
+                .ReadFrom(mmio)
+                .set_txpktrdy(1)
+                .WriteTo(mmio);
+        }
+#endif
+
+
 namespace mt_usb {
 
 uint8_t MtUsb::EpAddressToIndex(uint8_t addr) {
@@ -393,7 +436,7 @@ printf("EP0_WRITE not ready\n");
     }
 }
 
-void MtUsb::HandleEndpointTx(Endpoint* ep) {
+void MtUsb::HandleEndpointTxLocked(Endpoint* ep) {
     auto* mmio = usb_mmio();
     auto ep_num = ep->ep_num;
 
@@ -407,28 +450,50 @@ printf("MtUsb::HandleEndpointTx ep_num: %u\n", ep_num);
 printf("dma_count: %u\n", dma_count); 
 #endif
 
-    __UNUSED auto txcsr = TXCSR_PERI::Get(ep_num).ReadFrom(mmio);
-    txcsr.Print();
+    if (TXCSR_PERI::Get(ep_num).ReadFrom(mmio).fifo_not_empty()) {
+       printf("not ready to transmit\n");
+       return;
+    }
 
-    fbl::AutoLock lock(&ep->lock);
+//    __UNUSED auto txcsr = TXCSR_PERI::Get(ep_num).ReadFrom(mmio);
+//    txcsr.Print();
 
     usb_request_t* req = ep->current_req;
     if (req) {
-
-//        auto count = DMA_COUNT::Get(dma_channel).ReadFrom(mmio).count();
-        
-    
-    } else {
-        zxlogf(ERROR, "%s: no request to complete\n", __func__);
+        size_t length = req->header.length;
+        if (ep->cur_offset < length) {
+            void* vaddr;
+            auto status = usb_request_mmap(req, &vaddr);
+            if (status != ZX_OK) {
+                zxlogf(ERROR, "%s: usb_request_mmap failed %d\n", __func__, status);
+                usb_request_complete(req, status, 0);
+            } else {
+                auto buffer = static_cast<uint8_t*>(vaddr);
+                auto write_length = length - ep->cur_offset;
+                if (write_length > ep->max_packet_size) {
+                    write_length = ep->max_packet_size;
+                }
+                FifoWrite(ep_num, buffer + ep->cur_offset, write_length);
+                ep->cur_offset += write_length;
+                
+                TXCSR_PERI::Get(ep_num)
+                    .ReadFrom(mmio)
+                    .set_txpktrdy(1)
+                    .WriteTo(mmio);
+            }
+        } else {
+printf("completing TX request!\n");
+            usb_request_complete(req, ZX_OK, req->header.length);
+            ep->current_req = nullptr;
+        }    
     }
 
-// check TXPKTRDY?
-    if (ep->enabled) {
-//        EpQueueNextLocked(ep);
+    if (ep->enabled && ep->current_req == nullptr) {
+        EpQueueNextLocked(ep);
     }
 }
 
-void MtUsb::HandleEndpointRx(Endpoint* ep) {
+void MtUsb::HandleEndpointRxLocked(Endpoint* ep) {
     auto* mmio = usb_mmio();
     auto ep_num = ep->ep_num;
 
@@ -436,15 +501,12 @@ void MtUsb::HandleEndpointRx(Endpoint* ep) {
 
 // TODO check errors, clear bits in CSR?
 
-    fbl::AutoLock lock(&ep->lock);
-
-
 //    auto dma_count = DMA_COUNT::Get(ep->dma_channel).ReadFrom(mmio).count();
 //    auto count = RXCOUNT::Get(ep_num).ReadFrom(mmio).rxcount();
 printf("MtUsb::HandleEndpointRx ep_num %u\n", ep_num);
 
-    __UNUSED auto rxcsr = RXCSR_PERI::Get(ep_num).ReadFrom(mmio);
-    rxcsr.Print();
+    auto rxcsr = RXCSR_PERI::Get(ep_num).ReadFrom(mmio);
+//    rxcsr.Print();
 
 #ifdef USE_DMA
     auto dma_count = DMA_COUNT::Get(ep->dma_channel).ReadFrom(mmio).count();
@@ -458,23 +520,30 @@ printf("RX not ready\n");
 
     usb_request_t* req = ep->current_req;
     if (req) {
-        void* vaddr;
-        auto status = usb_request_mmap(req, &vaddr);
-        if (status != ZX_OK) {
-            zxlogf(ERROR, "%s: usb_request_mmap failed %d\n", __func__, status);
-            usb_request_complete(req, status, 0);
-        } else {
-            size_t actual;
-            FifoRead(ep_num, vaddr, req->header.length, &actual);
-            usb_request_complete(req, ZX_OK, actual);
+        size_t length = req->header.length;
+        if (ep->cur_offset < length) {
+           void* vaddr;
+            auto status = usb_request_mmap(req, &vaddr);
+            if (status != ZX_OK) {
+                zxlogf(ERROR, "%s: usb_request_mmap failed %d\n", __func__, status);
+                usb_request_complete(req, status, 0);
+            } else {
+                auto buffer = static_cast<uint8_t*>(vaddr);
+                length -= ep->cur_offset;
+                size_t actual;
+                FifoRead(ep_num, buffer + ep->cur_offset, length, &actual);
+                ep->cur_offset += actual;
+
+// TODO how do we know when we are done?
+//                usb_request_complete(req, ZX_OK, actual);
+//                ep->current_req == nullptr;
+            }
         }
-    } else {
-        zxlogf(ERROR, "%s: no request to complete\n", __func__);
     }
 #endif
 
-    if (ep->enabled) {
-//        EpQueueNextLocked(ep);
+    if (ep->enabled && ep->current_req == nullptr) {
+        EpQueueNextLocked(ep);
     }
 }
 
@@ -517,90 +586,16 @@ void MtUsb::EpQueueNextLocked(Endpoint* ep) {
     __UNUSED auto* mmio = usb_mmio();
     usb_request_t* req;
 
-
     if (ep->current_req == nullptr &&
         (req = list_remove_head_type(&ep->queued_reqs, usb_request_t, node)) != nullptr) {
         ep->current_req = req;
-        if (ep->direction == EP_IN) {
-            usb_request_cache_flush(req, 0, req->header.length);
-        } else {
-            usb_request_cache_flush_invalidate(req, 0, req->header.length);
-        }
-
-printf("XXXXX EpQueueNextLocked %u got req\n", ep->ep_num);
-
-        // TODO(voydanoff) scatter/gather support
-        size_t length = req->header.length;
-        ZX_DEBUG_ASSERT(length <= PAGE_SIZE);
-        
-        if (length > ep->max_packet_size) {
-            length = ep->max_packet_size;
-        }
-//        bool send_zlp = req->header.send_zlp && (length % ep->max_packet_size) == 0;
-
-#ifdef USE_DMA
-       phys_iter_t iter;
-        zx_paddr_t phys;
-        usb_request_physmap(req, bti_.get());
-        usb_request_phys_iter_init(&iter, req, PAGE_SIZE);
-        usb_request_phys_iter_next(&iter, &phys);
-        // This controller only supports 32-bit addresses
-        ZX_DEBUG_ASSERT(phys < UINT32_MAX);
-
-        uint32_t dma_channel = ep->dma_channel;
-
-printf("XXXXX START DMA channel %u ep_num %u length %zu phys %x direction %s\n", dma_channel, ep->ep_num, length, (uint32_t)phys,
-(ep->direction == EP_IN ? "IN" : "OUT"));
-
-        DMA_ADDR::Get(dma_channel)
-            .FromValue(0)
-            .set_addr(static_cast<uint32_t>(phys))
-            .WriteTo(mmio);
-
-        DMA_COUNT::Get(dma_channel)
-            .FromValue(0)
-            .set_count(static_cast<uint32_t>(length))
-            .WriteTo(mmio);
-
-        DMA_CNTL::Get(dma_channel)
-            .FromValue(0)
-            .set_burst_mode(3)
-            .set_endpoint(ep->ep_num)
-            .set_inten(1)
-            .set_dir(ep->direction == EP_IN ? 1 : 0)
-            .set_enable(1)
-            .WriteTo(mmio);
+        ep->cur_offset = 0;
 
         if (ep->direction == EP_IN) {
-            TXCSR_PERI::Get(ep->ep_num)
-                .ReadFrom(mmio)
-                .set_txpktrdy(1)
-                .WriteTo(mmio);
-        }
-#else
-        void* vaddr;
-        auto status = usb_request_mmap(req, &vaddr);
-        if (status != ZX_OK) {
-            zxlogf(ERROR, "%s: usb_request_mmap failed %d\n", __func__, status);
-            usb_request_complete(req, status, 0);
+            HandleEndpointTxLocked(ep);
         } else {
-            FifoWrite(ep->ep_num, vaddr, length);
-
-            TXCSR_PERI::Get(ep->ep_num)
-                .ReadFrom(mmio)
-                .set_txpktrdy(1)
-                .WriteTo(mmio);
-
-//            usb_request_complete(req, ZX_OK, actual);
+            HandleEndpointRxLocked(ep);
         }
-#endif
-
-//while (DMA_CNTL::Get(dma_channel).ReadFrom(mmio).enable()) {
-//printf("XXXXX spin\n");
-//sleep(1);
-//}
-
-
     }
 }
 
@@ -743,10 +738,12 @@ int MtUsb::IrqThread() {
 
     for (uint8_t i = 1; i <= countof(eps_) / 2; i++) { 
         INDEX::Get().FromValue(0).set_selected_endpoint(i).WriteTo(mmio);
-        TXFIFOADD::Get().FromValue(0).set_txfifoadd(static_cast<uint8_t>((2 * i + 1) * 512 / 8)).WriteTo(mmio);
-        RXFIFOADD::Get().FromValue(0).set_rxfifoadd(static_cast<uint8_t>((2 * i + 2) * 512 / 8)).WriteTo(mmio);
-        TXFIFOSZ::Get().FromValue(0).set_txdpb(0).set_txsz(6).WriteTo(mmio);
-        RXFIFOSZ::Get().FromValue(0).set_rxdpb(0).set_rxsz(6).WriteTo(mmio);
+        uint32_t fifo_addr = ((512 * i) >> 3) * 2;
+        ZX_DEBUG_ASSERT(fifo_addr < UINT16_MAX);
+        TXFIFOADD::Get().FromValue(0).set_txfifoadd(static_cast<uint16_t>(fifo_addr)).WriteTo(mmio);
+        RXFIFOADD::Get().FromValue(0).set_rxfifoadd(static_cast<uint16_t>(fifo_addr)).WriteTo(mmio);
+        TXFIFOSZ::Get().FromValue(0).set_txdpb(1).set_txsz(6).WriteTo(mmio);
+        RXFIFOSZ::Get().FromValue(0).set_rxdpb(1).set_rxsz(6).WriteTo(mmio);
     }
 
     while (true) {
@@ -757,7 +754,7 @@ int MtUsb::IrqThread() {
             zxlogf(ERROR, "%s: irq_.wait failed: %d\n", __func__, status);
             return -1;
         }
-        zxlogf(INFO, " \n%s: got interrupt!\n", __func__);
+//        zxlogf(INFO, " \n%s: got interrupt!\n", __func__);
 
         // Write back these registers to acknowledge the interrupts
         auto intrtx = INTRTX::Get().ReadFrom(mmio).WriteTo(mmio);
@@ -793,7 +790,8 @@ int MtUsb::IrqThread() {
                 if (ep_tx & (1 << i)) {
 printf("got TX for ep %u\n", i);
                     Endpoint* ep = &eps_[(i - 1) * 2 + 1];
-                    HandleEndpointTx(ep);
+                    fbl::AutoLock lock(&ep->lock);
+                    HandleEndpointTxLocked(ep);
                 }
             }
         }
@@ -804,7 +802,8 @@ printf("got TX for ep %u\n", i);
                 if (ep_rx & (1 << i)) {
 printf("got RX for ep %u\n", i);
                     Endpoint* ep = &eps_[(i - 1) * 2];
-                    HandleEndpointRx(ep);
+                    fbl::AutoLock lock(&ep->lock);
+                    HandleEndpointRxLocked(ep);
                 }
             }
         }
@@ -840,9 +839,9 @@ void MtUsb::UsbDciRequestQueue(usb_request_t* req) {
     }
     Endpoint* ep = &eps_[ep_index];
 
-printf("UsbDciRequestQueue address %02x length %zu, index %u direction %s\n", req->header.ep_address,
-req->header.length, ep_index,
-(ep->direction == EP_IN ? "IN" : "OUT"));
+//printf("UsbDciRequestQueue address %02x length %zu, index %u direction %s\n", req->header.ep_address,
+//req->header.length, ep_index,
+//(ep->direction == EP_IN ? "IN" : "OUT"));
 
 
     fbl::AutoLock lock(&ep->lock);
