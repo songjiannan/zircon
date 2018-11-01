@@ -260,14 +260,12 @@ void MtUsb::HandleReset() {
     set_address_ = false;
     configuration_ = 0;
 
-/* ???
     INTRTXE::Get()
         .FromValue(0)
         .WriteTo(mmio);
     INTRRXE::Get()
         .FromValue(0)
         .WriteTo(mmio);
-*/
 
     BUSPERF3::Get()
         .FromValue(0)
@@ -521,22 +519,26 @@ printf("RX not ready\n");
     usb_request_t* req = ep->current_req;
     if (req) {
         size_t length = req->header.length;
-        if (ep->cur_offset < length) {
-           void* vaddr;
-            auto status = usb_request_mmap(req, &vaddr);
-            if (status != ZX_OK) {
-                zxlogf(ERROR, "%s: usb_request_mmap failed %d\n", __func__, status);
-                usb_request_complete(req, status, 0);
-            } else {
-                auto buffer = static_cast<uint8_t*>(vaddr);
-                length -= ep->cur_offset;
-                size_t actual;
-                FifoRead(ep_num, buffer + ep->cur_offset, length, &actual);
-                ep->cur_offset += actual;
 
-// TODO how do we know when we are done?
-//                usb_request_complete(req, ZX_OK, actual);
-//                ep->current_req == nullptr;
+        void* vaddr;
+        auto status = usb_request_mmap(req, &vaddr);
+        if (status != ZX_OK) {
+            zxlogf(ERROR, "%s: usb_request_mmap failed %d\n", __func__, status);
+            usb_request_complete(req, status, 0);
+        } else {
+            auto buffer = static_cast<uint8_t*>(vaddr);
+            length -= ep->cur_offset;
+            size_t actual;
+            FifoRead(ep_num, buffer + ep->cur_offset, length, &actual);
+            ep->cur_offset += actual;
+
+            // signal that we read the packet    
+            rxcsr.set_rxpktrdy(0).WriteTo(mmio);
+
+            if (actual == 0) {
+printf("completing rx!\n");
+                usb_request_complete(req, ZX_OK, ep->cur_offset);
+                ep->current_req = nullptr;
             }
         }
     }
@@ -620,7 +622,7 @@ void MtUsb::FifoRead(uint8_t ep_index, void* buf, size_t buflen, size_t* actual)
 
     size_t count = RXCOUNT::Get(ep_index).ReadFrom(mmio).rxcount();
     if (count > buflen) {
-        zxlogf(ERROR, "%s: buffer too small\n", __func__);
+        zxlogf(ERROR, "%s: buffer too small: buflen %zu rxcount %zu\n", __func__, buflen, count);
         count = buflen;
     }
 printf("FifoRead ep_index %u rxcount %zu\n", ep_index, count);
@@ -696,15 +698,10 @@ int MtUsb::IrqThread() {
         .FromValue(0xff)
         .WriteTo(mmio);
 
-    // Enable interrupts
-    uint16_t intrtx = (1 << 0);
-    uint16_t intrrx = (1 << 0);
-
+    // Enable TX and RX interrupts for endpoint zero
     INTRTXE::Get()
-        .FromValue(intrtx)
-        .WriteTo(mmio);
-    INTRRXE::Get()
-        .FromValue(intrrx)
+        .FromValue(0)
+        .set_ep_tx(1 << 0)
         .WriteTo(mmio);
   
     // Enable USB interrupts
@@ -762,10 +759,16 @@ int MtUsb::IrqThread() {
         auto intrusb = INTRUSB::Get().ReadFrom(mmio).WriteTo(mmio);
         __UNUSED auto l1ints = USB_L1INTS::Get().ReadFrom(mmio).WriteTo(mmio);
 
-//printf("INTRTX\n");
-//        intrtx.Print();
-//printf("INTRRX\n");
-//        intrrx.Print();
+printf("INTRTX\n");
+        intrtx.Print();
+printf("INTRRX\n");
+        intrrx.Print();
+
+printf("INTRTXE\n");
+        INTRTXE::Get().ReadFrom(mmio).Print();
+printf("INTRRXE\n");
+        INTRRXE::Get().ReadFrom(mmio).Print();
+
 //        intrusb.Print();
 //        l1ints.Print();
 
@@ -891,7 +894,7 @@ zx_status_t MtUsb::UsbDciSetInterface(const usb_dci_interface_t* interface) {
     }
 
     Endpoint* ep = &eps_[ep_index];
-printf("UsbDciConfigEp address %02x configuration_ %u direction %u\n", ep_address, configuration_, ep->direction);
+printf("UsbDciConfigEp address %02x ep_num %u direction %u\n", ep_address, ep->ep_num, ep->direction);
 
     fbl::AutoLock lock(&ep->lock);
 
@@ -913,11 +916,13 @@ printf("UsbDciConfigEp address %02x configuration_ %u direction %u\n", ep_addres
         auto intrtxe = INTRTXE::Get().ReadFrom(mmio);
         uint16_t mask = intrtxe.ep_tx();
         mask |= static_cast<uint16_t>(1 << ep->ep_num);
+printf("write INTRTXE %x\n", mask);
         intrtxe.set_ep_tx(mask).WriteTo(mmio);
     } else {
         auto intrrxe = INTRRXE::Get().ReadFrom(mmio);
         uint16_t mask = intrrxe.ep_rx();
         mask |= static_cast<uint16_t>(1 << ep->ep_num);
+printf("write INTRRXE %x\n", mask);
         intrrxe.set_ep_rx(mask).WriteTo(mmio);
     }
 

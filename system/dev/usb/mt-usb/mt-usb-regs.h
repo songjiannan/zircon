@@ -46,31 +46,31 @@ public:
 class INTRTX : public hwreg::RegisterBase<INTRTX, uint16_t, hwreg::EnablePrinter> {
 public:
     // bit field, one bit per TX endpoint
-    DEF_FIELD(7, 0, ep_tx);
+    DEF_FIELD(15, 0, ep_tx);
     static auto Get() { return hwreg::RegisterAddr<INTRTX>(0x02); }
 };
 
 // RX Interrupt Status Register
 class INTRRX : public hwreg::RegisterBase<INTRRX, uint16_t, hwreg::EnablePrinter> {
 public:
-    // bit field, one bit per RX endpoint (endpoints 1 - 7)
-    DEF_FIELD(7, 0, ep_rx);
+    // bit field, one bit per RX endpoint (endpoints 1 - 15)
+    DEF_FIELD(15, 0, ep_rx);
     static auto Get() { return hwreg::RegisterAddr<INTRRX>(0x4); }
 };
 
 // TX Interrupt Enable Register
-class INTRTXE : public hwreg::RegisterBase<INTRTXE, uint16_t> {
+class INTRTXE : public hwreg::RegisterBase<INTRTXE, uint16_t, hwreg::EnablePrinter> {
 public:
     // bit field, one bit per TX endpoint
-    DEF_FIELD(7, 0, ep_tx);
+    DEF_FIELD(15, 0, ep_tx);
     static auto Get() { return hwreg::RegisterAddr<INTRTXE>(0x06); }
 };
 
 // RX Interrupt Enable Register
-class INTRRXE : public hwreg::RegisterBase<INTRRXE, uint16_t> {
+class INTRRXE : public hwreg::RegisterBase<INTRRXE, uint16_t, hwreg::EnablePrinter> {
 public:
-    // bit field, one bit per RX endpoint (endpoints 1 - 7)
-    DEF_FIELD(7, 0, ep_rx);
+    // bit field, one bit per RX endpoint (endpoints 1 - 15)
+    DEF_FIELD(15, 0, ep_rx);
     static auto Get() { return hwreg::RegisterAddr<INTRRXE>(0x8); }
 };
 
