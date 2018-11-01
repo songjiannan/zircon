@@ -477,7 +477,6 @@ printf("RX not ready\n");
         if (status != ZX_OK) {
             zxlogf(ERROR, "%s: usb_request_mmap failed %d\n", __func__, status);
             usb_request_complete(req, status, 0);
-            
         } else {
             size_t actual;
             FifoRead(ep_num, vaddr, req->header.length, &actual);
@@ -543,13 +542,6 @@ void MtUsb::EpQueueNextLocked(Endpoint* ep) {
             usb_request_cache_flush_invalidate(req, 0, req->header.length);
         }
 
-        phys_iter_t iter;
-        zx_paddr_t phys;
-        usb_request_physmap(req, bti_.get());
-        usb_request_phys_iter_init(&iter, req, PAGE_SIZE);
-        usb_request_phys_iter_next(&iter, &phys);
-        // This controller only supports 32-bit addresses
-        ZX_DEBUG_ASSERT(phys < UINT32_MAX);
 
         // TODO(voydanoff) scatter/gather support
         size_t length = req->header.length;
@@ -561,6 +553,14 @@ void MtUsb::EpQueueNextLocked(Endpoint* ep) {
 //        bool send_zlp = req->header.send_zlp && (length % ep->max_packet_size) == 0;
 
 #ifdef USE_DMA
+       phys_iter_t iter;
+        zx_paddr_t phys;
+        usb_request_physmap(req, bti_.get());
+        usb_request_phys_iter_init(&iter, req, PAGE_SIZE);
+        usb_request_phys_iter_next(&iter, &phys);
+        // This controller only supports 32-bit addresses
+        ZX_DEBUG_ASSERT(phys < UINT32_MAX);
+
         uint32_t dma_channel = ep->dma_channel;
 
 printf("XXXXX START DMA channel %u ep_num %u length %zu phys %x direction %s\n", dma_channel, ep->ep_num, length, (uint32_t)phys,
@@ -591,6 +591,22 @@ printf("set txpktrdy\n");
                 .ReadFrom(mmio)
                 .set_txpktrdy(1)
                 .WriteTo(mmio);
+        }
+#else
+        void* vaddr;
+        auto status = usb_request_mmap(req, &vaddr);
+        if (status != ZX_OK) {
+            zxlogf(ERROR, "%s: usb_request_mmap failed %d\n", __func__, status);
+            usb_request_complete(req, status, 0);
+        } else {
+// crashes?            FifoWrite(ep->ep_num, vaddr, length);
+
+            TXCSR_PERI::Get(ep->ep_num)
+                .ReadFrom(mmio)
+                .set_txpktrdy(1)
+                .WriteTo(mmio);
+
+//            usb_request_complete(req, ZX_OK, actual);
         }
 #endif
 
@@ -649,6 +665,8 @@ void MtUsb::FifoWrite(uint8_t ep_index, const void* buf, size_t length) {
     auto* mmio = usb_mmio();
 
 //    INDEX::Get().FromValue(ep_index).WriteTo(mmio);
+
+printf("FifoWrite ep_index %u length %zu\n", ep_index, length);
 
     auto remaining = length;
     auto src = static_cast<const uint8_t*>(buf);

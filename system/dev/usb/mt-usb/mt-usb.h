@@ -83,6 +83,9 @@ private:
         // request currently being processed.
         usb_request_t* current_req __TA_GUARDED(lock) = nullptr;
 
+        // Offset into current_req during read and write.
+        size_t current_req_offset;
+
         fbl::Mutex lock;
     };
 
